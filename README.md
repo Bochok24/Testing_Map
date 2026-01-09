@@ -49,6 +49,7 @@ Five built-in test scenarios demonstrating different clustering behaviors:
 - **Live Console**: Real-time logging of DBSCAN operations
 - **Stats Panel**: Dataset overview, density scores, processing mode indicators
 - **Inspector Panel**: Detailed view of clustering logic (epsilon, semantic match, verdict)
+- **Validation Metrics Panel**: Real-time algorithm performance metrics with animated counters
 - **Batch Indicator**: Shows scanned/ignored/focused complaint counts during scenarios
 
 ### 6. **Mock Data Generator**
@@ -66,17 +67,15 @@ Python script that creates realistic test data:
 
 ```
 ground_truth_tool/
-├── dashboard.html                     # Main dashboard interface
-├── dashboard.css                      # Dark theme styling (770+ lines)
-├── dashboard.js                       # Dashboard controller
-├── simulation-engine.js               # Core DBSCAN visualization engine (1400+ lines)
-├── useSimulationEngine.js            # React-style hook (if using React)
+├── dashboard.html                     # Main dashboard interface (247 lines)
+├── dashboard.css                      # Dark theme styling (1008 lines)
+├── simulation-engine.js               # Core DBSCAN visualization engine (1666 lines)
 ├── generate_mock_data.py             # Python script to generate mock data
 ├── mock_complaints.json              # Generated complaint dataset (500+ records)
 ├── brgy_boundaries_location.json     # 26 barangay GeoJSON polygons
 ├── digos-city-boundary.json          # City boundary polygon
-├── DOCUMENTATION.md                  # Comprehensive technical documentation (850+ lines)
-└── README.md                         # This file
+├── DOCUMENTATION.md                  # Comprehensive technical documentation (1644+ lines)
+└── README.md                         # This file (440+ lines)
 ```
 
 ---
@@ -190,7 +189,78 @@ ground_truth_tool/
 
 ---
 
-## 🔧 Technical Details
+## � Validation Metrics Panel
+
+### Purpose
+Real-time algorithm performance dashboard displaying key validation metrics for thesis defense. Automatically calculates and displays metrics after each scenario execution.
+
+### Metrics Display
+
+#### 1. **Redundancy Reduced** (HERO METRIC)
+- **Formula**: `((Original Reports - Resulting Clusters) / Original Reports) × 100`
+- **Display**: Large 48px green text with neon glow effect
+- **Example**: `538 → 1 reports = 99.8% reduction`
+- **Purpose**: PRIMARY THESIS METRIC - Shows clustering efficiency
+- **Animation**: Pulsing glow effect on update, counter animation
+- **Visual**: Full-width card, green border (2px), backdrop blur effect
+
+#### 2. **Accuracy Score**
+- **Formula**: `100%` if system decision matches expected result, `0%` otherwise
+- **Display**: Cyan colored metric
+- **Validation**: Compares system decision (MERGE/SEPARATE) against expectedResult in SCENARIO_CONFIG
+- **Detail Text**: "✓ matches expected" or "✗ expected [MERGE/SEPARATE]"
+- **Purpose**: Validates algorithm correctness against ground truth
+
+#### 3. **False Positives**
+- **Formula**: Count of incorrect merges (merged when should be separate)
+- **Display**: Red colored metric
+- **Example**: `0` (no errors), `3` (3 incorrect merges)
+- **Detail Text**: "no errors" or "incorrect merges"
+- **Purpose**: Error detection for algorithm validation
+
+#### 4. **Processing Time**
+- **Formula**: `performance.now()` delta in milliseconds
+- **Display**: White/neutral colored metric
+- **Example**: `1,247ms`
+- **Detail Text**: "fast execution" (<100ms), "normal speed" (100-500ms), "complex analysis" (>500ms)
+- **Purpose**: Performance benchmarking
+
+### Visual Design
+- **Location**: Bottom-right corner (floating panel)
+- **Dimensions**: 340px width, responsive height
+- **Background**: Dark glassmorphism (rgba(10, 15, 25, 0.95)) with 12px blur
+- **Layout**: CSS Grid (2 columns), hero metric spans full width
+- **Animation**: Slide-up entrance (0.5s), counter animations, glow effects
+- **Theme**: Matches dark dashboard aesthetic with neon accents
+
+### Implementation Details
+```javascript
+// Metrics calculation triggered automatically at scenario end
+const metrics = metricsCalculator.calculateScenarioMetrics(
+    scenarioNumber,
+    scenarioData,
+    results
+);
+
+const processingTime = metricsCalculator.endTiming();
+metricsCalculator.updateMetricsUI(metrics, processingTime);
+```
+
+### Console Logging
+Metrics are also logged to browser console for documentation:
+```javascript
+📊 Validation Metrics: {
+  scenario: "Semantic Chain",
+  redundancyReduced: "99.8%",
+  accuracy: "100%",
+  falsePositives: 0,
+  processingTime: "1247ms"
+}
+```
+
+---
+
+## �🔧 Technical Details
 
 ### Algorithm Configuration
 - **DBSCAN Epsilon**: Adaptive per category (5m - 25m)
@@ -401,6 +471,6 @@ This project is designed for thesis defense presentations demonstrating:
 
 ---
 
-**Version**: 2.0  
+**Version**: 3.0  
 **Last Updated**: January 9, 2026  
-**Status**: Production Ready
+**Status**: Production Ready - Thesis Defense Build

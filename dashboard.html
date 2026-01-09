@@ -167,6 +167,66 @@
                 </div>
             </div>
 
+            <!-- Validation Metrics Panel (Floating) -->
+            <div class="metrics-panel" id="metricsPanel">
+                <div class="metrics-header">
+                    <h3><i class="fas fa-chart-line"></i> Validation Metrics</h3>
+                </div>
+                <div class="metrics-grid">
+                    <!-- Redundancy Reduced - THE HERO METRIC -->
+                    <div class="metric-card hero">
+                        <div class="metric-icon">
+                            <i class="fas fa-compress-arrows-alt"></i>
+                        </div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="metricRedundancy">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                        <span class="metric-label">Redundancy Reduced</span>
+                        <div class="metric-detail" id="metricRedundancyDetail">-- → -- reports</div>
+                    </div>
+                    
+                    <!-- Accuracy Score -->
+                    <div class="metric-card accuracy">
+                        <div class="metric-icon">
+                            <i class="fas fa-bullseye"></i>
+                        </div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="metricAccuracy">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                        <span class="metric-label">Accuracy Score</span>
+                        <div class="metric-detail" id="metricAccuracyDetail">vs. expected</div>
+                    </div>
+                    
+                    <!-- False Positives -->
+                    <div class="metric-card error">
+                        <div class="metric-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="metricFalsePositives">--</span>
+                            <span class="metric-unit"></span>
+                        </div>
+                        <span class="metric-label">False Positives</span>
+                        <div class="metric-detail" id="metricFPDetail">incorrect merges</div>
+                    </div>
+                    
+                    <!-- Processing Time -->
+                    <div class="metric-card neutral">
+                        <div class="metric-icon">
+                            <i class="fas fa-stopwatch"></i>
+                        </div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="metricTime">--</span>
+                            <span class="metric-unit">ms</span>
+                        </div>
+                        <span class="metric-label">Processing Time</span>
+                        <div class="metric-detail" id="metricTimeDetail">algorithm runtime</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Status Overlay -->
             <div class="status-overlay" id="statusOverlay">
                 <div class="status-message" id="statusMessage"></div>

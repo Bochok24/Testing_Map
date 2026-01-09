@@ -557,6 +557,211 @@ body {
     }
 }
 
+/* ==================== VALIDATION METRICS PANEL ==================== */
+.metrics-panel {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    width: 340px;
+    background: rgba(10, 15, 25, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    animation: slideUp 0.5s ease;
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.metrics-header {
+    padding: 16px 20px;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.1));
+    border-bottom: 1px solid var(--border-color);
+}
+
+.metrics-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+}
+
+.metrics-header h3 i {
+    color: var(--accent-green);
+    font-size: 16px;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 16px;
+}
+
+.metric-card {
+    background: rgba(20, 28, 45, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* THE HERO METRIC - Redundancy Reduced (spans full width) */
+.metric-card.hero {
+    grid-column: 1 / -1;
+    background: linear-gradient(145deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
+    border: 2px solid var(--accent-green);
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.2), inset 0 0 60px rgba(16, 185, 129, 0.05);
+}
+
+.metric-card.hero .metric-value {
+    font-size: 48px;
+    color: var(--accent-green);
+    text-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+}
+
+.metric-card.hero .metric-icon {
+    color: var(--accent-green);
+    font-size: 20px;
+}
+
+.metric-card.hero .metric-label {
+    color: var(--accent-green);
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Accuracy - Cyan */
+.metric-card.accuracy {
+    border-color: rgba(6, 182, 212, 0.4);
+}
+
+.metric-card.accuracy .metric-value {
+    color: #06b6d4;
+}
+
+.metric-card.accuracy .metric-icon {
+    color: #06b6d4;
+}
+
+/* Error - Red */
+.metric-card.error {
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.metric-card.error .metric-value {
+    color: var(--accent-red);
+}
+
+.metric-card.error .metric-icon {
+    color: var(--accent-red);
+}
+
+/* Neutral - White/Gray */
+.metric-card.neutral .metric-value {
+    color: var(--text-primary);
+}
+
+.metric-card.neutral .metric-icon {
+    color: var(--text-secondary);
+}
+
+.metric-icon {
+    margin-bottom: 8px;
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.metric-data {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+
+.metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    line-height: 1;
+}
+
+.metric-unit {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.metric-detail {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+/* Animated glow effect for hero metric when updated */
+@keyframes heroGlow {
+    0%, 100% {
+        box-shadow: 0 0 30px rgba(16, 185, 129, 0.2), inset 0 0 60px rgba(16, 185, 129, 0.05);
+    }
+    50% {
+        box-shadow: 0 0 50px rgba(16, 185, 129, 0.4), inset 0 0 80px rgba(16, 185, 129, 0.1);
+    }
+}
+
+.metric-card.hero.updated {
+    animation: heroGlow 1.5s ease-in-out 3;
+}
+
+/* Number counter animation */
+@keyframes countUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.metric-value.animate {
+    animation: countUp 0.4s ease-out;
+}
+
 /* ==================== LEAFLET CUSTOMIZATION ==================== */
 .leaflet-container {
     background: #0d1117;
