@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CitizenLink: Logic Validation Console</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar Control Panel -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-project-diagram"></i>
+                </div>
+                <h1>CitizenLink</h1>
+                <p class="subtitle">Logic Validation Console</p>
+            </div>
+
+            <!-- Dataset Overview Section -->
+            <section class="dataset-overview">
+                <h2>Dataset Overview</h2>
+                <div class="overview-grid">
+                    <div class="overview-item">
+                        <i class="fas fa-database"></i>
+                        <div class="overview-data">
+                            <span class="overview-label">Active Dataset</span>
+                            <span class="overview-value" id="datasetName">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <i class="fas fa-layer-group"></i>
+                        <div class="overview-data">
+                            <span class="overview-label">Total Records</span>
+                            <span class="overview-value highlight" id="totalRecords">--</span>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <i class="fas fa-hourglass-half"></i>
+                        <div class="overview-data">
+                            <span class="overview-label">Pending Validation</span>
+                            <span class="overview-value" id="pendingValidation">--</span>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <i class="fas fa-chart-area"></i>
+                        <div class="overview-data">
+                            <span class="overview-label">Density Score</span>
+                            <span class="overview-value density-high" id="densityScore">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="processing-mode">
+                    <span class="mode-label">Processing Mode:</span>
+                    <span class="mode-value" id="processingMode">
+                        <i class="fas fa-globe"></i> Global Scan
+                    </span>
+                </div>
+            </section>
+
+            <!-- Test Scenarios Section -->
+            <section class="scenarios-section">
+                <h2>Test Scenarios</h2>
+                <div class="scenarios-list">
+                    <button class="scenario-btn" data-scenario="1">
+                        <i class="fas fa-water"></i>
+                        <div class="scenario-info">
+                            <span class="scenario-label">Scenario 1</span>
+                            <span class="scenario-name">Pipe → Flood Chain</span>
+                        </div>
+                    </button>
+
+                    <button class="scenario-btn" data-scenario="2">
+                        <i class="fas fa-copy"></i>
+                        <div class="scenario-info">
+                            <span class="scenario-label">Scenario 2</span>
+                            <span class="scenario-name">Duplicate Spammer</span>
+                        </div>
+                    </button>
+
+                    <button class="scenario-btn" data-scenario="3">
+                        <i class="fas fa-faucet-drip"></i>
+                        <div class="scenario-info">
+                            <span class="scenario-label">Scenario 3</span>
+                            <span class="scenario-name">Discrete Neighbors</span>
+                        </div>
+                    </button>
+
+                    <button class="scenario-btn" data-scenario="4">
+                        <i class="fas fa-clock"></i>
+                        <div class="scenario-info">
+                            <span class="scenario-label">Scenario 4</span>
+                            <span class="scenario-name">Temporal Drift</span>
+                        </div>
+                    </button>
+
+                    <button class="scenario-btn" data-scenario="5">
+                        <i class="fas fa-ban"></i>
+                        <div class="scenario-info">
+                            <span class="scenario-label">Scenario 5</span>
+                            <span class="scenario-name">False Positive</span>
+                        </div>
+                    </button>
+                </div>
+
+                <button class="reset-btn">
+                    <i class="fas fa-redo"></i>
+                    Reset Simulation
+                </button>
+            </section>
+
+            <!-- Live System Log -->
+            <section class="log-section">
+                <h2>Live System Log</h2>
+                <div class="log-container">
+                    <div class="log-content" id="logContent">
+                        <div class="log-line system">[SYSTEM] CitizenLink Validation Console Ready</div>
+                        <div class="log-line system">[SYSTEM] Generalized DBSCAN Algorithm v2.1 Loaded</div>
+                        <div class="log-line info">[INFO] Awaiting Scenario Selection...</div>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Main Map Area -->
+        <main class="map-container">
+            <div id="map"></div>
+            
+            <!-- Inspector Panel (Floating) -->
+            <div class="inspector-panel" id="inspectorPanel">
+                <div class="inspector-header">
+                    <h3>Algorithm Inspector</h3>
+                    <button class="close-inspector" id="closeInspector">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="inspector-content">
+                    <div class="inspector-field">
+                        <label>Current Category:</label>
+                        <span class="value" id="currentCategory">-</span>
+                    </div>
+                    <div class="inspector-field highlight">
+                        <label>Adaptive Epsilon:</label>
+                        <span class="value" id="adaptiveEpsilon">-</span>
+                    </div>
+                    <div class="inspector-field">
+                        <label>Time Difference:</label>
+                        <span class="value" id="timeDiff">-</span>
+                    </div>
+                    <div class="inspector-field">
+                        <label>Semantic Match:</label>
+                        <span class="value" id="semanticMatch">-</span>
+                    </div>
+                    <div class="inspector-field verdict">
+                        <label>Logic Verdict:</label>
+                        <span class="value verdict-text" id="logicVerdict">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Overlay -->
+            <div class="status-overlay" id="statusOverlay">
+                <div class="status-message" id="statusMessage"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Simulation Engine (Must load before dashboard.js) -->
+    <script src="simulation-engine.js"></script>
+    
+    <!-- Dashboard Controller -->
+    <script src="dashboard.js"></script>
+</body>
+</html>
