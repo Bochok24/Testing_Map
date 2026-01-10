@@ -10,10 +10,12 @@ A sophisticated web-based dashboard for visualizing and demonstrating the Genera
 
 This project implements a complete visualization system for demonstrating how a Generalized DBSCAN algorithm processes citizen complaints with:
 - **Semantic Correlation**: Understands relationships between complaint categories (e.g., Pipe Leak → Flooding)
-- **Adaptive Epsilon**: Different distance thresholds per category (5m for "No Water", 25m for "Flooding")
-- **Temporal Filtering**: Filters old data (ignores complaints older than 30 days)
+- **Adaptive Epsilon**: Different distance thresholds per category (5m for "No Water", 30m for "Fire")
+- **Temporal Filtering**: Filters old data (ignores complaints older than 48 hours)
 - **Geographic Boundaries**: Complaints generated within actual Digos City barangay polygons
 - **Stacking Visualization**: Facebook-style notification badges for overlapping complaints
+- **Keyword Analysis**: Jaccard similarity for semantic text matching with configurable thresholds
+- **Extended Categories**: 12 complaint types including Fire and Traffic emergencies
 
 ---
 
@@ -25,12 +27,28 @@ This project implements a complete visualization system for demonstrating how a 
 - **Smart Dimming**: Background fades to 15% opacity during scenario analysis
 
 ### 2. **Interactive Scenario Testing**
-Five built-in test scenarios demonstrating different clustering behaviors:
-- **Scenario 1**: Semantic Chain (Pipe Leak → Flooding) - Tests causal correlation
-- **Scenario 2**: Duplicate Spammer - Tests redundancy detection
-- **Scenario 3**: Discrete Neighbors - Tests category-specific epsilon thresholds
-- **Scenario 4**: Old News - Tests temporal filtering (35-day old data ignored)
-- **Scenario 5**: False Positive - Tests semantic rejection (unrelated categories)
+**15 comprehensive test scenarios** organized in 3 groups:
+
+**GROUP A: Spatial Logic (5 scenarios)**
+- **S-01**: Redundancy - 3x Pothole at exact same location (0m difference)
+- **S-03**: Discrete - 2x No Water exactly 15m apart (tests ε=5m boundary)
+- **S-07**: Precision Edge - Tests mathematical boundary at 24.9m vs 25.1m
+- **S-09**: GPS Drift - 5x Streetlight from same user scattered in 7m radius
+- **S-13**: Moving Hazard - Stray Dog at 2 locations 60m apart, 5 mins gap
+
+**GROUP B: Semantic Logic (5 scenarios)**
+- **S-02**: Causal Chain - Pipe Leak + Flood 10m apart (cause-effect)
+- **S-05**: False Correlation - Stray Dog + Pothole 1m apart (unrelated)
+- **S-06**: Domino Chain - Pipe → Flood → Traffic cascade effect
+- **S-10**: Conflict - Fire + Pothole at exact same location (incompatible)
+- **S-11**: Synonyms - 'Baha' vs 'Rising Water' 5m apart (same meaning)
+
+**GROUP C: Data Integrity (5 scenarios)**
+- **S-04**: Time Decay - 2x Trash at same location, today vs 90 days ago
+- **S-08**: Mass Panic - 20x Fire in 10m radius within 60 seconds
+- **S-12**: Spam Bot - 50 complaints with identical timestamp (to millisecond)
+- **S-14**: Default Pin - 10 complaints at map center (default location)
+- **S-15**: Null Data - Records with null lat or null category (error handling)
 
 ### 3. **Geographic Accuracy**
 - **26 Barangay Boundaries**: Visual polygon outlines with color-coding
@@ -54,28 +72,31 @@ Five built-in test scenarios demonstrating different clustering behaviors:
 
 ### 6. **Mock Data Generator**
 Python script that creates realistic test data:
-- **500-600 complaints** per generation
-- **10 categories** with Taglish descriptions (Filipino/English)
-- **Hotspot distribution**: 30% of complaints placed at same coordinates for stacking
+- **970+ complaints** per generation
+- **12 categories** with Taglish descriptions (Filipino/English)
+- **15 test scenarios** embedded with specific prefixes (S01_ through S15_)
 - **26 barangay coverage**: Complaints distributed across all Digos City barangays
-- **Realistic timestamps**: Random timestamps within past week
-- **Test scenarios**: 5 specific scenarios embedded in dataset
+- **Realistic timestamps**: Random timestamps within configurable time windows
+- **Keyword extraction**: Automatic extraction of keywords and categories from descriptions
+- **Edge cases**: Null data, identical timestamps, GPS drift, moving hazards
+- **New categories**: Fire emergencies, Traffic incidents for domino effect testing
 
 ---
 
 ## 📁 Project Structure
 
 ```
-ground_truth_tool/
-├── dashboard.html                     # Main dashboard interface (247 lines)
-├── dashboard.css                      # Dark theme styling (1008 lines)
-├── simulation-engine.js               # Core DBSCAN visualization engine (1666 lines)
-├── generate_mock_data.py             # Python script to generate mock data
-├── mock_complaints.json              # Generated complaint dataset (500+ records)
+Testing_Map/
+├── dashboard.html                     # Main dashboard interface (15 scenario buttons)
+├── dashboard.css                      # Dark theme styling with scenario groups (1100+ lines)
+├── dashboard.js                       # Dashboard controller with keyboard shortcuts (350+ lines)
+├── simulation-engine.js               # Core DBSCAN visualization engine (2050+ lines)
+├── generate_mock_data.py             # Python script to generate mock data (935+ lines)
+├── mock_complaints.json              # Generated complaint dataset (970+ records)
 ├── brgy_boundaries_location.json     # 26 barangay GeoJSON polygons
 ├── digos-city-boundary.json          # City boundary polygon
-├── DOCUMENTATION.md                  # Comprehensive technical documentation (1644+ lines)
-└── README.md                         # This file (440+ lines)
+├── DOCUMENTATION.md                  # Comprehensive technical documentation (2000+ lines)
+└── README.md                         # This file
 ```
 
 ---
@@ -91,10 +112,10 @@ ground_truth_tool/
 
 1. **Generate Mock Data**
    ```bash
-   cd ground_truth_tool
+   cd Testing_Map
    python generate_mock_data.py
    ```
-   This creates `mock_complaints.json` with 500+ complaints distributed across barangays.
+   This creates `mock_complaints.json` with 970+ complaints distributed across barangays with 15 embedded test scenarios.
 
 2. **Start Local Server**
    ```bash
@@ -109,7 +130,8 @@ ground_truth_tool/
    Navigate to `http://localhost:8080/dashboard.html`
 
 4. **Test Scenarios**
-   - Click scenario buttons (S-01 through S-05) to see DBSCAN in action
+   - Click scenario buttons (S-01 through S-15) organized in 3 groups
+   - Use keyboard shortcuts: 1-9 for scenarios 1-9, 0 for S-10, Shift+1-5 for S-11 to S-15
    - Watch the console log for detailed clustering steps
    - Observe how background markers dim and spotlight markers appear
    - Click "Reset Scan" to return to full system view
@@ -126,17 +148,25 @@ ground_truth_tool/
 - **Click Markers**: Click complaint markers to see details
 
 ### Running Scenarios
-1. Click any scenario button (S-01 to S-05)
+1. Click any scenario button (S-01 to S-15) or use keyboard shortcuts
 2. Watch the animation:
-   - Background markers dim to 15% opacity
+   - Background markers dim to lower opacity
    - Map pans/zooms to scenario cluster
    - Spotlight markers appear with animations
-   - Console logs show DBSCAN steps
+   - Console logs show DBSCAN steps with keyword analysis
 3. Inspect the results:
    - Check epsilon circles (distance thresholds)
    - See connection lines between related complaints
-   - View verdict in inspector panel (MERGED or REJECTED)
-4. Click "Reset Scan" to clear and return to full view
+   - View verdict in inspector panel (MERGED, REJECTED, or FLAGGED)
+   - Review validation metrics (redundancy reduction %, accuracy, false positives)
+4. Click "Reset Scan" (or press R) to clear and return to full view
+
+### Keyboard Shortcuts
+- **1-9**: Run scenarios 1-9
+- **0**: Run scenario 10
+- **Shift+1 to Shift+5**: Run scenarios 11-15
+- **R**: Reset simulation
+- **Esc**: Close inspector panel
 
 ### Understanding Visualizations
 - **Gray Dots (4px)**: Background complaints (always visible)
@@ -169,9 +199,9 @@ ground_truth_tool/
 ### Metadata Structure
 ```json
 {
-  "generated_at": "2026-01-09T12:00:00",
-  "generator": "CitizenLink Synthetic Data Generator v2.0",
-  "total_records": 538,
+  "generated_at": "2026-01-11T12:00:00",
+  "generator": "CitizenLink Synthetic Data Generator v3.0",
+  "total_records": 971,
   "base_location": {
     "city": "Digos City",
     "latitude": 6.7523,
@@ -182,6 +212,8 @@ ground_truth_tool/
   "category_epsilon": {
     "Pipe Leak": 15.0,
     "Flooding": 25.0,
+    "Fire": 30.0,
+    "Traffic": 20.0,
     ...
   }
 }
@@ -263,10 +295,12 @@ Metrics are also logged to browser console for documentation:
 ## �🔧 Technical Details
 
 ### Algorithm Configuration
-- **DBSCAN Epsilon**: Adaptive per category (5m - 25m)
-- **Temporal Window**: 30 days (ignores older complaints)
-- **Semantic Matrix**: Pre-defined category relationships
+- **DBSCAN Epsilon**: Adaptive per category (5m - 30m range)
+- **Temporal Window**: 48 hours (configurable MAX_TIME_DIFF_HOURS)
+- **Semantic Matrix**: Pre-defined category relationships with bidirectional lookup
 - **Correlation Threshold**: 0.5 minimum for semantic matching
+- **Keyword Similarity**: Jaccard index with 0.3 min threshold, 0.6 boost threshold
+- **Same-Category Scores**: All identical categories score 1.0 (100%)
 - **Stacking Threshold**: Exact coordinate matching (6 decimal places)
 
 ### Visualization Specs

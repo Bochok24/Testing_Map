@@ -104,6 +104,31 @@ function updateInspector(data) {
     document.getElementById('timeDiff').textContent = data.timeDiff || '-';
     document.getElementById('semanticMatch').textContent = data.semantic || '-';
     
+    // Update keyword display
+    const keywordTagsEl = document.getElementById('keywordTags');
+    if (data.keywords && data.keywords.length > 0) {
+        keywordTagsEl.innerHTML = data.keywords.map(kw => 
+            `<span class="keyword-tag">${kw}</span>`
+        ).join(' ');
+    } else {
+        keywordTagsEl.textContent = 'No keywords';
+    }
+    
+    // Update keyword similarity
+    const keywordSimEl = document.getElementById('keywordSimilarity');
+    if (data.keywordSimilarity !== undefined) {
+        const simPercent = (data.keywordSimilarity * 100).toFixed(0);
+        keywordSimEl.textContent = `${simPercent}% (${data.keywordVerdict || 'N/A'})`;
+        keywordSimEl.className = 'value';
+        if (data.keywordVerdict === 'STRONG') {
+            keywordSimEl.classList.add('keyword-strong');
+        } else if (data.keywordVerdict === 'MODERATE') {
+            keywordSimEl.classList.add('keyword-moderate');
+        }
+    } else {
+        keywordSimEl.textContent = '-';
+    }
+    
     const verdictElement = document.getElementById('logicVerdict');
     verdictElement.textContent = data.verdict || '-';
     verdictElement.className = 'value verdict-text';
@@ -232,8 +257,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Ignore if typing in an input
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         
-        // Number keys 1-5 to trigger scenarios
-        if (e.key >= '1' && e.key <= '5' && !simulationEngine.isRunning) {
+        // Number keys 1-9 to trigger scenarios 1-9
+        if (e.key >= '1' && e.key <= '9' && !simulationEngine.isRunning) {
             const scenarioNum = parseInt(e.key);
             const btn = document.querySelector(`[data-scenario="${scenarioNum}"]`);
             if (btn) {
@@ -242,8 +267,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         
+        // 0 key for scenario 10
+        if (e.key === '0' && !simulationEngine.isRunning) {
+            const btn = document.querySelector(`[data-scenario="10"]`);
+            if (btn) {
+                btn.click();
+                console.log(`[CitizenLink] Triggered scenario 10 via keyboard`);
+            }
+        }
+        
+        // Shift+1-5 for scenarios 11-15
+        if (e.shiftKey && e.key >= '1' && e.key <= '5' && !simulationEngine.isRunning) {
+            const scenarioNum = parseInt(e.key) + 10;
+            const btn = document.querySelector(`[data-scenario="${scenarioNum}"]`);
+            if (btn) {
+                btn.click();
+                console.log(`[CitizenLink] Triggered scenario ${scenarioNum} via keyboard`);
+            }
+        }
+        
         // R to reset
-        if ((e.key === 'r' || e.key === 'R') && !simulationEngine.isRunning) {
+        if ((e.key === 'r' || e.key === 'R') && !e.shiftKey && !simulationEngine.isRunning) {
             resetSimulation();
         }
         

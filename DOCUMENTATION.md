@@ -2,7 +2,8 @@
 ## Complete Technical Documentation v3.1
 
 **Author:** CitizenLink Development Team  
-**Date:** January 9, 2026  
+**Date:** January 11, 2026  
+**Version:** 3.1  
 **Purpose:** Thesis Defense Demonstration - Generalized DBSCAN Clustering Algorithm  
 **Location:** Digos City, Philippines (6.7490°N, 125.3572°E)
 
@@ -36,13 +37,16 @@ The system addresses the challenge of **duplicate detection and complaint correl
 
 ### 1.2 Key Features
 
-- ✅ **Full System Scan Visualization**: Displays all 65+ data points simultaneously on map load
-- ✅ **Adaptive Epsilon**: Category-specific distance thresholds (5m - 25m range)
-- ✅ **Semantic Relationship Matrix**: Causal correlation modeling between complaint types
+- ✅ **Full System Scan Visualization**: Displays all 970+ data points simultaneously on map load
+- ✅ **Adaptive Epsilon**: Category-specific distance thresholds (5m - 30m range)
+- ✅ **Semantic Relationship Matrix**: Bidirectional causal correlation modeling between complaint types
 - ✅ **Temporal Windowing**: 48-hour time decay for complaint relevance
+- ✅ **Keyword Similarity Analysis**: Jaccard index-based text matching with configurable thresholds
 - ✅ **Spotlight/Dimming Effects**: Professional big-data visualization during scenario analysis
-- ✅ **Real-time Logic Validation**: Step-by-step algorithm decision logging
-- ✅ **5 Comprehensive Test Scenarios**: Covering edge cases and expected behaviors
+- ✅ **Real-time Logic Validation**: Step-by-step algorithm decision logging with keyword analysis
+- ✅ **15 Comprehensive Test Scenarios**: Covering spatial logic, semantic logic, and data integrity
+- ✅ **Extended Categories**: 12 complaint types including Fire emergencies and Traffic incidents
+- ✅ **Validation Metrics System**: Real-time performance metrics with animated counters
 
 ### 1.3 Technology Stack
 
@@ -385,60 +389,68 @@ const temporalValid = (timeDiff <= MAX_TIME_DIFF_HOURS);
 ## 4. File Structure
 
 ```
-ground_truth_tool/
+Testing_Map/
 │
-├── dashboard.html              # Main UI entry point (187 lines)
-├── dashboard.css               # Dark theme styling (626 lines)
-├── dashboard.js                # Controller/event handlers (281 lines)
-├── simulation-engine.js        # Core DBSCAN logic (982 lines)
-├── useSimulationEngine.js      # React hook version (optional)
+├── dashboard.html              # Main UI entry point with 15 scenario buttons
+├── dashboard.css               # Dark theme styling with scenario groups (1100+ lines)
+├── dashboard.js                # Controller/event handlers with keyboard shortcuts (350+ lines)
+├── simulation-engine.js        # Core DBSCAN logic with keyword analysis (2050+ lines)
 │
-├── mock_complaints.json        # 65 test records + metadata
-├── generate_mock_data.py       # Python data generator
+├── mock_complaints.json        # 970+ test records + metadata
+├── generate_mock_data.py       # Python data generator with 15 scenarios (935+ lines)
 │
-├── brgy_boundaries_location.json   # Barangay boundaries (unused)
-├── digos-city-boundary.json        # City boundary (unused)
+├── brgy_boundaries_location.json   # Barangay boundaries (26 polygons)
+├── digos-city-boundary.json        # City boundary polygon
 │
 ├── README.md                   # Quick start guide
-└── DOCUMENTATION.md            # This file
+└── DOCUMENTATION.md            # This file (2000+ lines)
 ```
 
 ### 4.1 File Responsibilities
 
 #### **dashboard.html**
 - Semantic HTML5 structure
-- Sidebar with Dataset Overview + 5 scenario buttons
+- Sidebar with Dataset Overview + 15 scenario buttons organized in 3 groups
 - Map container (Leaflet renders here)
 - Inspector panel (live metrics during simulation)
-- Log panel (algorithm decisions)
+- Log panel (algorithm decisions with keyword analysis)
+- Validation Metrics panel (redundancy reduction, accuracy, false positives, processing time)
 - External dependencies (CDN links)
 
 #### **dashboard.css**
 - Dark theme design (professional/scientific aesthetic)
-- Responsive layout (Flexbox)
-- Animation keyframes (marker drops, pulses, fades)
+- Responsive layout (Flexbox and CSS Grid)
+- Animation keyframes (marker drops, pulses, fades, counter animations)
 - Color-coded elements (success=green, warning=yellow, error=red)
 - Monospace fonts for data display
+- Scenario group styling with color-coded titles
+- Scrollable scenario list with custom scrollbar
 
 #### **dashboard.js**
 - Map initialization (Leaflet instance)
-- Event listeners (scenario buttons, reset button, keyboard shortcuts)
+- Event listeners (scenario buttons, reset button, keyboard shortcuts for all 15 scenarios)
 - Callback functions: `addLog()`, `updateInspector()`, `updateStats()`
 - SimulationEngine instance creation
 - UI state management
+- Keyboard shortcuts: 1-9, 0, Shift+1-5, R, Esc
 
 #### **simulation-engine.js**
 - SimulationEngine class (main orchestrator)
-- Core algorithms (Haversine, DBSCAN logic, semantic checks)
+- Core algorithms (Haversine, DBSCAN logic, semantic checks with bidirectional lookup)
+- Keyword similarity analysis (Jaccard index)
 - Marker creation/management (background + spotlight)
-- Scenario-specific implementations (runScenario1-5)
+- Scenario-specific implementations (15 scenarios across 3 groups)
 - Animation/timing control
+- MetricsCalculator class for validation metrics
+- Null data handling and error recovery
 
 #### **mock_complaints.json**
-- 65 synthetic citizen complaints
-- 5 scenario groups (each with 2-5 related points)
-- ~40 background noise points (unrelated)
+- 970+ synthetic citizen complaints
+- 15 scenario groups organized in 3 categories (spatial, semantic, data integrity)
+- ~900+ background noise points (unrelated)
 - Metadata (dataset name, generation timestamp, record counts)
+- Keywords and keyword_categories for text analysis
+- Scenario prefixes: S01_ through S15_
 
 ---
 
@@ -448,17 +460,49 @@ ground_truth_tool/
 
 ```javascript
 // Adaptive Epsilon (meters)
-const ADAPTIVE_EPSILON = { /* 10 categories, 5m-25m */ };
+const ADAPTIVE_EPSILON = {
+    "Pipe Leak": 15.0,
+    "Flooding": 25.0,
+    "Pothole": 10.0,
+    "No Water": 5.0,
+    "Trash": 8.0,
+    "Stray Dog": 20.0,
+    "Broken Streetlight": 12.0,
+    "Illegal Dumping": 15.0,
+    "Noise Complaint": 10.0,
+    "Road Damage": 12.0,
+    "Fire": 30.0,
+    "Traffic": 20.0
+};
 
-// Semantic Relationships
-const RELATIONSHIP_MATRIX = { /* 10 categories */ };
+// Semantic Relationships (bidirectional lookup supported)
+const RELATIONSHIP_MATRIX = {
+    "Pipe Leak": ["Flooding", "No Water", "Road Damage"],
+    "Flooding": ["Pipe Leak", "Road Damage", "Trash", "Traffic"],
+    "Stray Dog": ["Stray Dog"],  // Same category can merge
+    "Fire": ["Fire"],
+    "Traffic": ["Flooding", "Road Damage", "Fire"],
+    // ... 12 categories total
+};
 
-// Correlation Scores (0.0 - 1.0)
-const CORRELATION_SCORES = { /* 14 defined pairs */ };
+// Correlation Scores (0.0 - 1.0, includes same-category scores)
+const CORRELATION_SCORES = {
+    "Pipe Leak->Flooding": 0.92,
+    "Flooding->Traffic": 0.85,
+    "Fire->Fire": 1.0,  // Same category = 100%
+    // ... 40+ defined pairs with bidirectional support
+};
 
 // Thresholds
 const CORRELATION_THRESHOLD = 0.50;  // Minimum for MERGE
 const MAX_TIME_DIFF_HOURS = 48;      // Temporal window
+
+// Keyword Configuration
+const KEYWORD_CONFIG = {
+    MIN_SIMILARITY_THRESHOLD: 0.3,  // Minimum overlap
+    BOOST_THRESHOLD: 0.6,           // High similarity boost
+    RELEVANCE_WEIGHT: 0.15          // Weight in final decision
+};
 ```
 
 ### 5.2 Animation Timing (milliseconds)
@@ -488,12 +532,17 @@ const CATEGORY_ICONS = {
     "Broken Streetlight": "lightbulb",
     "Illegal Dumping": "dumpster",
     "Noise Complaint": "volume-up",
-    "Road Damage": "road-barrier"
+    "Road Damage": "road-barrier",
+    "Fire": "fire",
+    "Traffic": "car"
 };
 
-// Scenario Colors
+// Scenario Configuration (15 scenarios)
 const SCENARIO_CONFIG = {
-    1: { color: "#10b981" }, // Green - Semantic Chain
+    1: { name: "S-01: Redundancy", color: "#10b981", group: "A", expectedResult: "MERGE" },
+    2: { name: "S-03: Discrete", color: "#ef4444", group: "A", expectedResult: "SEPARATE" },
+    // ... 15 total scenarios across groups A, B, C
+};
     2: { color: "#3b82f6" }, // Blue - Duplicate Detection
     3: { color: "#ef4444" }, // Red - Discrete Neighbors
     4: { color: "#f59e0b" }, // Orange - Temporal Decay

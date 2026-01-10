@@ -7,12 +7,28 @@ Uses actual Digos City barangay boundaries for realistic geographic distribution
 Author: CitizenLink Development Team
 Date: January 2026
 
-This script creates 5 specific test scenarios:
-1. Main Event (Flooding + Leak) - Tests semantic correlation
-2. Duplicate Spammer - Tests redundancy detection
-3. Neighbors (Discrete Issue) - Tests epsilon threshold per category
-4. Old News (Time Decay) - Tests temporal window filtering
-5. False Positive - Tests semantic rejection
+This script creates 15 specific test scenarios across 3 groups:
+
+Group A: Spatial Logic
+- S-01 (Redundancy): 3x "Pothole" at exact same lat/lng (0m diff)
+- S-03 (Discrete): 2x "No Water" exactly 15m apart (should NOT merge)
+- S-07 (Precision Edge): Center="Pothole", Point A=24.9m, Point B=25.1m (tests math boundary)
+- S-09 (GPS Drift): 5x "Streetlight" from same user scattered in 7m radius
+- S-13 (Moving Hazard): "Stray Dog" at (0,0) and (0, 60m) reported 5 mins apart
+
+Group B: Semantic Logic
+- S-02 (Causal): 1x "Pipe Leak", 1x "Flood" (10m away)
+- S-05 (False Correl): 1x "Stray Dog", 1x "Pothole" (1m away - unrelated)
+- S-06 (Domino Chain): Pipe (0m) -> Flood (10m) -> Traffic (20m)
+- S-10 (Conflict): 1x "Fire", 1x "Pothole" at EXACT same coordinates
+- S-11 (Synonyms): Pt A: "Baha" (Flood), Pt B: "Rising Water" (Flood), Dist: 5m
+
+Group C: Data Integrity
+- S-04 (Time Decay): 2x "Trash" at same loc, Time A: Today, Time B: 90 Days Ago
+- S-08 (Mass Panic): 20x "Fire" in 10m radius within 60 seconds
+- S-12 (Spam Bot): 50 complaints, random locs, identical timestamp (to ms)
+- S-14 (Default Pin): 10 complaints stacked at map center (0,0)
+- S-15 (Null Data): 1 record lat: null, 1 record category: null
 """
 
 import json
@@ -43,6 +59,8 @@ CATEGORY_EPSILON = {
     "Illegal Dumping": 15.0,
     "Noise Complaint": 10.0,
     "Road Damage": 12.0,
+    "Fire": 30.0,
+    "Traffic": 20.0,
 }
 
 # Taglish descriptions by category
@@ -121,6 +139,123 @@ DESCRIPTIONS = {
         "Need road repair ASAP",
         "Delikado ang daan, maraming crack",
     ],
+    "Fire": [
+        "May sunog dito!",
+        "Fire emergency, need help!",
+        "Nasusunog ang bahay!",
+        "Smoke and flames visible here",
+        "Fire outbreak sa area namin",
+        "Sunog! Tawag na ng fire truck!",
+    ],
+    "Traffic": [
+        "Traffic jam dito",
+        "Road blocked, hindi madaanan",
+        "Massive traffic sa intersection",
+        "Bumper to bumper ang sasakyan",
+        "Traffic buildup dahil sa aksidente",
+    ],
+}
+
+# Keyword dictionary for text analysis - maps keywords to categories
+KEYWORD_DICTIONARY = {
+    # Water-related
+    "tubig": ["Pipe Leak", "Flooding", "No Water"],
+    "water": ["Pipe Leak", "Flooding", "No Water"],
+    "tulo": ["Pipe Leak"],
+    "leak": ["Pipe Leak"],
+    "leaking": ["Pipe Leak"],
+    "butas": ["Pipe Leak", "Pothole"],
+    "pipe": ["Pipe Leak"],
+    "burst": ["Pipe Leak"],
+    "baha": ["Flooding"],
+    "flood": ["Flooding"],
+    "flooded": ["Flooding"],
+    "lubog": ["Flooding"],
+    "flash": ["Flooding"],
+    "outage": ["No Water"],
+    "walang": ["No Water", "Broken Streetlight"],
+    "interrupted": ["No Water"],
+    "supply": ["No Water"],
+    
+    # Road-related
+    "lubak": ["Pothole"],
+    "pothole": ["Pothole"],
+    "hole": ["Pothole"],
+    "butas": ["Pothole", "Pipe Leak"],
+    "kalsada": ["Pothole", "Road Damage"],
+    "road": ["Pothole", "Road Damage"],
+    "daan": ["Pothole", "Road Damage"],
+    "sira": ["Road Damage", "Broken Streetlight"],
+    "crack": ["Road Damage"],
+    "damage": ["Road Damage"],
+    "repair": ["Road Damage", "Pipe Leak"],
+    
+    # Trash-related
+    "basura": ["Trash", "Illegal Dumping"],
+    "trash": ["Trash", "Illegal Dumping"],
+    "garbage": ["Trash"],
+    "dumi": ["Trash"],
+    "mabaho": ["Trash", "Illegal Dumping"],
+    "dump": ["Illegal Dumping"],
+    "dumping": ["Illegal Dumping"],
+    "tapon": ["Illegal Dumping"],
+    "illegal": ["Illegal Dumping"],
+    
+    # Animal-related
+    "aso": ["Stray Dog"],
+    "dog": ["Stray Dog"],
+    "dogs": ["Stray Dog"],
+    "stray": ["Stray Dog"],
+    "gala": ["Stray Dog"],
+    "aggressive": ["Stray Dog"],
+    "nangangagat": ["Stray Dog"],
+    
+    # Light-related
+    "ilaw": ["Broken Streetlight"],
+    "streetlight": ["Broken Streetlight"],
+    "light": ["Broken Streetlight"],
+    "dark": ["Broken Streetlight"],
+    "madilim": ["Broken Streetlight"],
+    "poste": ["Broken Streetlight"],
+    "busted": ["Broken Streetlight"],
+    
+    # Noise-related
+    "ingay": ["Noise Complaint"],
+    "maingay": ["Noise Complaint"],
+    "noise": ["Noise Complaint"],
+    "loud": ["Noise Complaint"],
+    "videoke": ["Noise Complaint"],
+    "construction": ["Noise Complaint"],
+    
+    # Fire-related
+    "sunog": ["Fire"],
+    "fire": ["Fire"],
+    "flames": ["Fire"],
+    "smoke": ["Fire"],
+    "burning": ["Fire"],
+    "nasusunog": ["Fire"],
+    
+    # Traffic-related
+    "traffic": ["Traffic"],
+    "jam": ["Traffic"],
+    "blocked": ["Traffic"],
+    "bumper": ["Traffic"],
+    "congestion": ["Traffic"],
+    
+    # Flood synonyms
+    "baha": ["Flooding"],
+    "rising water": ["Flooding"],
+    "tubig tumataas": ["Flooding"],
+    
+    # Urgency keywords (boost relevance)
+    "emergency": [],
+    "urgent": [],
+    "asap": [],
+    "help": [],
+    "grabe": [],
+    "delikado": [],
+    "dangerous": [],
+    "mapanganib": [],
 }
 
 # User names for authenticity
@@ -198,6 +333,73 @@ def get_outer_ring(geojson_coords) -> List:
     else:
         # Polygon - get outer ring
         return geojson_coords[0]
+
+
+# ==================== KEYWORD EXTRACTION ====================
+
+def extract_keywords(description: str, category: str) -> Dict:
+    """
+    Extract keywords from complaint description for text-based similarity analysis.
+    
+    Args:
+        description: The complaint text description
+        category: The complaint category
+        
+    Returns:
+        Dict containing:
+        - keywords: List of matched keywords
+        - matched_categories: Categories suggested by keywords
+        - relevance_score: How well keywords match the assigned category (0.0-1.0)
+        - urgency_level: Detected urgency from keywords (low/medium/high)
+    """
+    # Normalize text: lowercase and split into words
+    words = description.lower().replace(',', ' ').replace('.', ' ').replace('!', ' ').split()
+    
+    matched_keywords = []
+    matched_categories = set()
+    urgency_keywords = []
+    
+    # Urgency indicators
+    urgency_words = {"emergency", "urgent", "asap", "help", "grabe", "delikado", "dangerous", "mapanganib"}
+    
+    for word in words:
+        # Check if word is in our keyword dictionary
+        if word in KEYWORD_DICTIONARY:
+            categories = KEYWORD_DICTIONARY[word]
+            if categories:  # Has category mappings
+                matched_keywords.append(word)
+                matched_categories.update(categories)
+            elif word in urgency_words:
+                urgency_keywords.append(word)
+    
+    # Calculate relevance score: how well do extracted keywords match the assigned category?
+    relevance_score = 0.0
+    if matched_categories:
+        if category in matched_categories:
+            # Category matches - calculate based on how many keywords point to this category
+            category_matches = sum(1 for kw in matched_keywords 
+                                   if category in KEYWORD_DICTIONARY.get(kw, []))
+            relevance_score = min(1.0, category_matches / max(len(matched_keywords), 1) + 0.3)
+        else:
+            # Keywords suggest different category - lower score
+            relevance_score = 0.2
+    else:
+        # No keywords matched - neutral score
+        relevance_score = 0.5
+    
+    # Determine urgency level
+    urgency_level = "low"
+    if len(urgency_keywords) >= 2:
+        urgency_level = "high"
+    elif len(urgency_keywords) == 1 or any(word in description.lower() for word in ["please", "paki", "need"]):
+        urgency_level = "medium"
+    
+    return {
+        "keywords": matched_keywords,
+        "matched_categories": list(matched_categories),
+        "relevance_score": round(relevance_score, 2),
+        "urgency_level": urgency_level
+    }
 
 
 def random_point_in_barangay(barangay: Dict) -> Tuple[float, float]:
@@ -300,13 +502,20 @@ def create_complaint(
     status: str = "PENDING",
     scenario_tag: str = None
 ) -> Dict:
-    """Create a complaint record."""
+    """Create a complaint record with keyword extraction."""
+    # Extract keywords from description
+    keyword_data = extract_keywords(description, category)
+    
     record = {
         "id": complaint_id,
         "user_id": user_id,
         "timestamp": timestamp,
         "category": category,
         "description": description,
+        "keywords": keyword_data["keywords"],
+        "keyword_categories": keyword_data["matched_categories"],
+        "keyword_relevance": keyword_data["relevance_score"],
+        "urgency": keyword_data["urgency_level"],
         "latitude": round(latitude, 6),
         "longitude": round(longitude, 6),
         "status": status
@@ -323,129 +532,62 @@ def create_complaint(
 
 # ==================== SCENARIO GENERATORS ====================
 
-def generate_scenario_1_main_event(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
-    """
-    Scenario 1: Main Event (Flooding + Leak)
-    - 1 Broken Pipe complaint
-    - 4 Flooding complaints surrounding it (within 10-25 meters)
-    - Timestamps within 2 hours
-    
-    Tests: Semantic correlation between Pipe Leak → Flooding
-    Expected: Should MERGE all into one cluster
-    """
-    complaints = []
-    
-    # Pick a random barangay for this scenario
-    brgy = random.choice(barangays)
-    event_lat, event_lng = random_point_in_barangay(brgy)
-    
-    print(f"📍 Scenario 1: Main Event (Flooding + Leak)")
-    print(f"   Barangay: {brgy['name']}")
-    print(f"   Location: ({event_lat:.6f}, {event_lng:.6f})")
-    
-    # Source complaint: Pipe Leak
-    source_complaint = create_complaint(
-        complaint_id=generate_id(),
-        user_id=generate_user_id(),
-        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
-        category="Pipe Leak",
-        description=random.choice(DESCRIPTIONS["Pipe Leak"]),
-        latitude=event_lat,
-        longitude=event_lng,
-        barangay=brgy['name'],
-        scenario_tag="scenario_1_source"
-    )
-    complaints.append(source_complaint)
-    print(f"   ✓ Created source: Pipe Leak")
-    
-    # Surrounding flood complaints (4 within 10-25 meters)
-    for i in range(4):
-        offset_meters = random.uniform(10, 25)
-        flood_lat, flood_lng = offset_coordinates(event_lat, event_lng, offset_meters)
-        
-        flood_complaint = create_complaint(
-            complaint_id=generate_id(),
-            user_id=generate_user_id(),
-            timestamp=random_timestamp(base_time, 2.0, "after"),
-            category="Flooding",
-            description=random.choice(DESCRIPTIONS["Flooding"]),
-            latitude=flood_lat,
-            longitude=flood_lng,
-            barangay=brgy['name'],
-            scenario_tag="scenario_1_flood"
-        )
-        complaints.append(flood_complaint)
-    
-    print(f"   ✓ Created 4 surrounding flood complaints")
-    print(f"   Expected Result: MERGE (Causal correlation)")
-    
-    return complaints
+# ==================== GROUP A: SPATIAL LOGIC ====================
 
-
-def generate_scenario_2_duplicate_spammer(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+def generate_scenario_S01_redundancy(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
     """
-    Scenario 2: Duplicate Spammer
-    - 3 complaints from SAME user
-    - SAME location (exact coordinates)
-    - Within 1 minute of each other
+    S-01 (Redundancy): 3x "Pothole" at exact same lat/lng (0m diff).
     
-    Tests: Redundancy detection
-    Expected: Should MERGE into single report
+    Tests: Exact duplicate detection at identical coordinates
+    Expected: Should MERGE all into one cluster (redundant reports)
     """
     complaints = []
     
     brgy = random.choice(barangays)
-    spam_lat, spam_lng = random_point_in_barangay(brgy)
-    spammer_id = "u_SPAM_001"
+    exact_lat, exact_lng = random_point_in_barangay(brgy)
     
-    print(f"\n📍 Scenario 2: Duplicate Spammer")
+    print(f"📍 S-01 (Redundancy): 3x Pothole at exact same location")
     print(f"   Barangay: {brgy['name']}")
-    print(f"   Location: ({spam_lat:.6f}, {spam_lng:.6f})")
-    print(f"   User: {spammer_id}")
+    print(f"   Location: ({exact_lat:.6f}, {exact_lng:.6f})")
     
     for i in range(3):
-        timestamp = base_time + timedelta(seconds=i * 20)
-        
         complaint = create_complaint(
             complaint_id=generate_id(),
-            user_id=spammer_id,
-            timestamp=timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
-            category="Trash",
-            description=random.choice(DESCRIPTIONS["Trash"]),
-            latitude=spam_lat,
-            longitude=spam_lng,
+            user_id=generate_user_id(),  # Different users
+            timestamp=random_timestamp(base_time, 1.0),
+            category="Pothole",
+            description=random.choice(DESCRIPTIONS["Pothole"]),
+            latitude=exact_lat,  # EXACT same coordinates
+            longitude=exact_lng,
             barangay=brgy['name'],
-            scenario_tag="scenario_2_spam"
+            scenario_tag="S01_redundancy"
         )
         complaints.append(complaint)
     
-    print(f"   ✓ Created 3 duplicate complaints (20s apart)")
+    print(f"   ✓ Created 3 Pothole complaints at EXACT same location (0m apart)")
     print(f"   Expected Result: MERGE (Direct redundancy)")
     
     return complaints
 
 
-def generate_scenario_3_discrete_neighbors(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+def generate_scenario_S03_discrete(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
     """
-    Scenario 3: Discrete Neighbors (No Water)
-    - 2 complaints of same category
-    - Distance: 15 meters apart
-    - Epsilon for "No Water": 5 meters
+    S-03 (Discrete): 2x "No Water" exactly 15m apart.
     
-    Tests: Epsilon threshold per category
-    Expected: Should KEEP SEPARATE (15m > 5m epsilon)
+    Tests: Epsilon threshold - "No Water" has 5m epsilon
+    Expected: Should NOT merge (15m > 5m epsilon)
     """
     complaints = []
     
     brgy = random.choice(barangays)
     lat_a, lng_a = random_point_in_barangay(brgy)
-    lat_b, lng_b = offset_coordinates(lat_a, lng_a, 15, bearing=45)
+    lat_b, lng_b = offset_coordinates(lat_a, lng_a, 15.0, bearing=90)  # Exactly 15m
     
-    print(f"\n📍 Scenario 3: Discrete Neighbors (No Water)")
+    print(f"\n📍 S-03 (Discrete): 2x No Water exactly 15m apart")
     print(f"   Barangay: {brgy['name']}")
     print(f"   Location A: ({lat_a:.6f}, {lng_a:.6f})")
     print(f"   Location B: ({lat_b:.6f}, {lng_b:.6f})")
-    print(f"   Distance: 15 meters | Epsilon: 5 meters")
+    print(f"   Distance: 15m | Epsilon for No Water: 5m")
     
     complaint_a = create_complaint(
         complaint_id=generate_id(),
@@ -456,92 +598,709 @@ def generate_scenario_3_discrete_neighbors(base_time: datetime, barangays: List[
         latitude=lat_a,
         longitude=lng_a,
         barangay=brgy['name'],
-        scenario_tag="scenario_3_a"
+        scenario_tag="S03_discrete_a"
     )
     complaints.append(complaint_a)
     
     complaint_b = create_complaint(
         complaint_id=generate_id(),
         user_id=generate_user_id(),
-        timestamp=random_timestamp(base_time, 1.0),
+        timestamp=random_timestamp(base_time, 0.5),
         category="No Water",
         description=random.choice(DESCRIPTIONS["No Water"]),
         latitude=lat_b,
         longitude=lng_b,
         barangay=brgy['name'],
-        scenario_tag="scenario_3_b"
+        scenario_tag="S03_discrete_b"
     )
     complaints.append(complaint_b)
     
-    print(f"   ✓ Created 2 No Water complaints (15m apart)")
+    print(f"   ✓ Created 2 No Water complaints (exactly 15m apart)")
     print(f"   Expected Result: KEEP SEPARATE (15m > 5m epsilon)")
     
     return complaints
 
 
-def generate_scenario_4_old_news(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+def generate_scenario_S07_precision_edge(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
     """
-    Scenario 4: Old News (Time Decay)
-    - 2 complaints at SAME location
-    - One from TODAY, one from 35 DAYS AGO
+    S-07 (Precision Edge): Center="Pothole". Point A=24.9m away. Point B=25.1m away.
     
-    Tests: Temporal window filtering
-    Expected: Should IGNORE old data in clustering
+    Tests: Math boundary precision for Flooding epsilon (25m)
+    Expected: Point A should MERGE (24.9m < 25m), Point B should NOT merge (25.1m > 25m)
     """
     complaints = []
     
     brgy = random.choice(barangays)
-    event_lat, event_lng = random_point_in_barangay(brgy)
+    center_lat, center_lng = random_point_in_barangay(brgy)
     
-    print(f"\n📍 Scenario 4: Old News (Time Decay)")
+    # Point A: 24.9m away (just inside boundary)
+    lat_a, lng_a = offset_coordinates(center_lat, center_lng, 24.9, bearing=0)
+    # Point B: 25.1m away (just outside boundary)
+    lat_b, lng_b = offset_coordinates(center_lat, center_lng, 25.1, bearing=180)
+    
+    print(f"\n📍 S-07 (Precision Edge): Testing 25m epsilon boundary")
     print(f"   Barangay: {brgy['name']}")
-    print(f"   Location: ({event_lat:.6f}, {event_lng:.6f})")
+    print(f"   Center: ({center_lat:.6f}, {center_lng:.6f})")
+    print(f"   Point A: 24.9m away (should merge)")
+    print(f"   Point B: 25.1m away (should NOT merge)")
     
-    # Today's complaint
-    new_complaint = create_complaint(
+    # Center complaint - Flooding (epsilon = 25m)
+    center_complaint = create_complaint(
         complaint_id=generate_id(),
         user_id=generate_user_id(),
         timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Flooding",
+        description=random.choice(DESCRIPTIONS["Flooding"]),
+        latitude=center_lat,
+        longitude=center_lng,
+        barangay=brgy['name'],
+        scenario_tag="S07_precision_center"
+    )
+    complaints.append(center_complaint)
+    
+    # Point A: 24.9m away
+    complaint_a = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=random_timestamp(base_time, 0.5),
+        category="Flooding",
+        description=random.choice(DESCRIPTIONS["Flooding"]),
+        latitude=lat_a,
+        longitude=lng_a,
+        barangay=brgy['name'],
+        scenario_tag="S07_precision_inside"
+    )
+    complaints.append(complaint_a)
+    
+    # Point B: 25.1m away
+    complaint_b = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=random_timestamp(base_time, 0.5),
+        category="Flooding",
+        description=random.choice(DESCRIPTIONS["Flooding"]),
+        latitude=lat_b,
+        longitude=lng_b,
+        barangay=brgy['name'],
+        scenario_tag="S07_precision_outside"
+    )
+    complaints.append(complaint_b)
+    
+    print(f"   ✓ Created 3 Flooding complaints (center + 24.9m + 25.1m)")
+    print(f"   Expected: Center+A merge, B separate")
+    
+    return complaints
+
+
+def generate_scenario_S09_gps_drift(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-09 (GPS Drift): 5x "Streetlight" from Same User ID scattered in a 7m radius.
+    
+    Tests: Same user, same issue, GPS inaccuracy causing scatter
+    Expected: Should MERGE (same user, within reasonable drift)
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    center_lat, center_lng = random_point_in_barangay(brgy)
+    drift_user = "u_GPS_DRIFT_001"
+    
+    print(f"\n📍 S-09 (GPS Drift): 5x Streetlight from same user in 7m radius")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Center: ({center_lat:.6f}, {center_lng:.6f})")
+    print(f"   User ID: {drift_user}")
+    
+    for i in range(5):
+        # Random offset within 7m radius
+        drift_distance = random.uniform(0, 7)
+        drift_bearing = random.uniform(0, 360)
+        lat, lng = offset_coordinates(center_lat, center_lng, drift_distance, drift_bearing)
+        
+        complaint = create_complaint(
+            complaint_id=generate_id(),
+            user_id=drift_user,  # SAME user
+            timestamp=random_timestamp(base_time, 0.1),  # Within ~6 minutes
+            category="Broken Streetlight",
+            description=random.choice(DESCRIPTIONS["Broken Streetlight"]),
+            latitude=lat,
+            longitude=lng,
+            barangay=brgy['name'],
+            scenario_tag="S09_gps_drift"
+        )
+        complaints.append(complaint)
+    
+    print(f"   ✓ Created 5 Streetlight complaints (same user, scattered in 7m radius)")
+    print(f"   Expected Result: MERGE (GPS drift from same user)")
+    
+    return complaints
+
+
+def generate_scenario_S13_moving_hazard(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-13 (Moving Hazard): "Stray Dog" at (0,0) and another at (0, 60m) reported 5 mins later.
+    
+    Tests: Mobile hazard detection - same type, far apart, short time
+    Expected: Could be same pack moving - depends on implementation
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    lat_a, lng_a = random_point_in_barangay(brgy)
+    lat_b, lng_b = offset_coordinates(lat_a, lng_a, 60.0, bearing=0)  # 60m north
+    
+    print(f"\n📍 S-13 (Moving Hazard): Stray Dog at 2 locations 60m apart, 5 mins gap")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Location A: ({lat_a:.6f}, {lng_a:.6f})")
+    print(f"   Location B: ({lat_b:.6f}, {lng_b:.6f}) - 60m away")
+    
+    # First sighting
+    complaint_a = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Stray Dog",
+        description="May aggressive stray dog dito sa kanto",
+        latitude=lat_a,
+        longitude=lng_a,
+        barangay=brgy['name'],
+        scenario_tag="S13_moving_hazard_a"
+    )
+    complaints.append(complaint_a)
+    
+    # Second sighting - 5 minutes later, 60m away
+    time_b = base_time + timedelta(minutes=5)
+    complaint_b = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),  # Different user
+        timestamp=time_b.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Stray Dog",
+        description="Stray dogs roaming the street, moving fast",
+        latitude=lat_b,
+        longitude=lng_b,
+        barangay=brgy['name'],
+        scenario_tag="S13_moving_hazard_b"
+    )
+    complaints.append(complaint_b)
+    
+    print(f"   ✓ Created 2 Stray Dog complaints (60m apart, 5 mins interval)")
+    print(f"   Expected Result: Consider mobile hazard pattern")
+    
+    return complaints
+
+
+# ==================== GROUP B: SEMANTIC LOGIC ====================
+
+def generate_scenario_S02_causal(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-02 (Causal): 1x "Pipe Leak", 1x "Flood" (10m away).
+    
+    Tests: Semantic correlation between cause and effect
+    Expected: Should MERGE (Pipe Leak causes Flooding)
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    pipe_lat, pipe_lng = random_point_in_barangay(brgy)
+    flood_lat, flood_lng = offset_coordinates(pipe_lat, pipe_lng, 10.0, bearing=135)
+    
+    print(f"\n📍 S-02 (Causal): Pipe Leak + Flood 10m apart")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Pipe Leak: ({pipe_lat:.6f}, {pipe_lng:.6f})")
+    print(f"   Flood: ({flood_lat:.6f}, {flood_lng:.6f})")
+    
+    # Pipe Leak (cause)
+    pipe_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Pipe Leak",
+        description=random.choice(DESCRIPTIONS["Pipe Leak"]),
+        latitude=pipe_lat,
+        longitude=pipe_lng,
+        barangay=brgy['name'],
+        scenario_tag="S02_causal_pipe"
+    )
+    complaints.append(pipe_complaint)
+    
+    # Flooding (effect)
+    flood_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=random_timestamp(base_time, 1.0, "after"),
+        category="Flooding",
+        description=random.choice(DESCRIPTIONS["Flooding"]),
+        latitude=flood_lat,
+        longitude=flood_lng,
+        barangay=brgy['name'],
+        scenario_tag="S02_causal_flood"
+    )
+    complaints.append(flood_complaint)
+    
+    print(f"   ✓ Created Pipe Leak + Flooding (10m apart)")
+    print(f"   Expected Result: MERGE (Causal correlation)")
+    
+    return complaints
+
+
+def generate_scenario_S05_false_correlation(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-05 (False Correl): 1x "Stray Dog", 1x "Pothole" (1m away - Unrelated).
+    
+    Tests: Semantic rejection of unrelated categories
+    Expected: Should KEEP SEPARATE (no semantic relationship)
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    lat_a, lng_a = random_point_in_barangay(brgy)
+    lat_b, lng_b = offset_coordinates(lat_a, lng_a, 1.0, bearing=45)  # Only 1m away
+    
+    print(f"\n📍 S-05 (False Correlation): Stray Dog + Pothole 1m apart")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Distance: 1m (very close but unrelated)")
+    
+    # Stray Dog
+    dog_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Stray Dog",
+        description=random.choice(DESCRIPTIONS["Stray Dog"]),
+        latitude=lat_a,
+        longitude=lng_a,
+        barangay=brgy['name'],
+        scenario_tag="S05_false_correl_dog"
+    )
+    complaints.append(dog_complaint)
+    
+    # Pothole
+    pothole_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=random_timestamp(base_time, 0.5),
         category="Pothole",
         description=random.choice(DESCRIPTIONS["Pothole"]),
-        latitude=event_lat,
-        longitude=event_lng,
+        latitude=lat_b,
+        longitude=lng_b,
         barangay=brgy['name'],
-        scenario_tag="scenario_4_new"
+        scenario_tag="S05_false_correl_pothole"
     )
-    complaints.append(new_complaint)
-    print(f"   ✓ Created TODAY complaint: {base_time.strftime('%Y-%m-%d')}")
+    complaints.append(pothole_complaint)
     
-    # Old complaint (35 days ago)
-    old_time = base_time - timedelta(days=35)
+    print(f"   ✓ Created Stray Dog + Pothole (1m apart)")
+    print(f"   Expected Result: KEEP SEPARATE (no semantic correlation)")
+    
+    return complaints
+
+
+def generate_scenario_S06_domino_chain(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-06 (Domino Chain): Pipe (0m) -> Flood (10m) -> Traffic (20m).
+    
+    Tests: Multi-step causal chain
+    Expected: Should recognize cascade effect
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    pipe_lat, pipe_lng = random_point_in_barangay(brgy)
+    flood_lat, flood_lng = offset_coordinates(pipe_lat, pipe_lng, 10.0, bearing=90)
+    traffic_lat, traffic_lng = offset_coordinates(pipe_lat, pipe_lng, 20.0, bearing=90)
+    
+    print(f"\n📍 S-06 (Domino Chain): Pipe -> Flood -> Traffic")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Pipe (0m) -> Flood (10m) -> Traffic (20m)")
+    
+    # Step 1: Pipe Leak (origin)
+    pipe_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Pipe Leak",
+        description="Nabutas yung water pipe, malakas ang agos!",
+        latitude=pipe_lat,
+        longitude=pipe_lng,
+        barangay=brgy['name'],
+        scenario_tag="S06_domino_pipe"
+    )
+    complaints.append(pipe_complaint)
+    
+    # Step 2: Flooding (10m away, 30 mins later)
+    time_flood = base_time + timedelta(minutes=30)
+    flood_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=time_flood.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Flooding",
+        description="Baha na dito dahil sa busted pipe!",
+        latitude=flood_lat,
+        longitude=flood_lng,
+        barangay=brgy['name'],
+        scenario_tag="S06_domino_flood"
+    )
+    complaints.append(flood_complaint)
+    
+    # Step 3: Traffic (20m away, 1 hour later)
+    time_traffic = base_time + timedelta(hours=1)
+    traffic_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=time_traffic.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Traffic",
+        description="Traffic jam dahil sa baha, hindi madaanan!",
+        latitude=traffic_lat,
+        longitude=traffic_lng,
+        barangay=brgy['name'],
+        scenario_tag="S06_domino_traffic"
+    )
+    complaints.append(traffic_complaint)
+    
+    print(f"   ✓ Created Pipe -> Flood -> Traffic domino chain")
+    print(f"   Expected Result: Recognize cascade effect")
+    
+    return complaints
+
+
+def generate_scenario_S10_conflict(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-10 (Conflict): 1x "Fire", 1x "Pothole" at EXACT same coordinates.
+    
+    Tests: Conflicting categories at same location
+    Expected: Should KEEP SEPARATE (incompatible categories)
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    exact_lat, exact_lng = random_point_in_barangay(brgy)
+    
+    print(f"\n📍 S-10 (Conflict): Fire + Pothole at EXACT same location")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Location: ({exact_lat:.6f}, {exact_lng:.6f})")
+    
+    # Fire
+    fire_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Fire",
+        description=random.choice(DESCRIPTIONS["Fire"]),
+        latitude=exact_lat,
+        longitude=exact_lng,
+        barangay=brgy['name'],
+        scenario_tag="S10_conflict_fire"
+    )
+    complaints.append(fire_complaint)
+    
+    # Pothole - same exact location
+    pothole_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=random_timestamp(base_time, 0.5),
+        category="Pothole",
+        description=random.choice(DESCRIPTIONS["Pothole"]),
+        latitude=exact_lat,  # EXACT same coordinates
+        longitude=exact_lng,
+        barangay=brgy['name'],
+        scenario_tag="S10_conflict_pothole"
+    )
+    complaints.append(pothole_complaint)
+    
+    print(f"   ✓ Created Fire + Pothole at EXACT same location")
+    print(f"   Expected Result: KEEP SEPARATE (incompatible categories)")
+    
+    return complaints
+
+
+def generate_scenario_S11_synonyms(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-11 (Synonyms): Pt A: "Baha" (Flood). Pt B: "Rising Water" (Flood). Dist: 5m.
+    
+    Tests: Synonym recognition in descriptions
+    Expected: Should MERGE (same meaning, close proximity)
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    lat_a, lng_a = random_point_in_barangay(brgy)
+    lat_b, lng_b = offset_coordinates(lat_a, lng_a, 5.0, bearing=180)
+    
+    print(f"\n📍 S-11 (Synonyms): 'Baha' vs 'Rising Water' (5m apart)")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Distance: 5m")
+    
+    # Complaint A: Uses "Baha" (Tagalog for flood)
+    complaint_a = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Flooding",
+        description="Baha na dito sa amin! Ang taas na ng tubig!",
+        latitude=lat_a,
+        longitude=lng_a,
+        barangay=brgy['name'],
+        scenario_tag="S11_synonym_baha"
+    )
+    complaints.append(complaint_a)
+    
+    # Complaint B: Uses "Rising Water" (English)
+    complaint_b = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=random_timestamp(base_time, 0.5),
+        category="Flooding",
+        description="Rising water level here, need immediate help!",
+        latitude=lat_b,
+        longitude=lng_b,
+        barangay=brgy['name'],
+        scenario_tag="S11_synonym_rising"
+    )
+    complaints.append(complaint_b)
+    
+    print(f"   ✓ Created 'Baha' + 'Rising Water' complaints (5m apart)")
+    print(f"   Expected Result: MERGE (synonyms detected)")
+    
+    return complaints
+
+
+# ==================== GROUP C: DATA INTEGRITY ====================
+
+def generate_scenario_S04_time_decay(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-04 (Time Decay): 2x "Trash" at same loc. Time A: Today. Time B: 90 Days Ago.
+    
+    Tests: Temporal window filtering
+    Expected: Should IGNORE old data (90 days is beyond typical window)
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    exact_lat, exact_lng = random_point_in_barangay(brgy)
+    
+    print(f"\n📍 S-04 (Time Decay): 2x Trash, Today vs 90 Days Ago")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Location: ({exact_lat:.6f}, {exact_lng:.6f})")
+    
+    # Today's complaint
+    today_complaint = create_complaint(
+        complaint_id=generate_id(),
+        user_id=generate_user_id(),
+        timestamp=base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        category="Trash",
+        description=random.choice(DESCRIPTIONS["Trash"]),
+        latitude=exact_lat,
+        longitude=exact_lng,
+        barangay=brgy['name'],
+        scenario_tag="S04_decay_today"
+    )
+    complaints.append(today_complaint)
+    
+    # 90 days ago
+    old_time = base_time - timedelta(days=90)
     old_complaint = create_complaint(
         complaint_id=generate_id(),
         user_id=generate_user_id(),
         timestamp=old_time.strftime("%Y-%m-%dT%H:%M:%S"),
-        category="Pothole",
-        description=random.choice(DESCRIPTIONS["Pothole"]),
-        latitude=event_lat,
-        longitude=event_lng,
+        category="Trash",
+        description=random.choice(DESCRIPTIONS["Trash"]),
+        latitude=exact_lat,
+        longitude=exact_lng,
         barangay=brgy['name'],
         status="RESOLVED",
-        scenario_tag="scenario_4_old"
+        scenario_tag="S04_decay_old"
     )
     complaints.append(old_complaint)
-    print(f"   ✓ Created OLD complaint: {old_time.strftime('%Y-%m-%d')} (35 days ago)")
+    
+    print(f"   ✓ Created 2 Trash complaints (today + 90 days ago)")
     print(f"   Expected Result: IGNORE old data in clustering")
     
     return complaints
 
 
-def generate_scenario_5_false_positive(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+def generate_scenario_S08_mass_panic(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
     """
-    Scenario 5: False Positive (Unrelated Categories)
-    - 2 complaints at SAME location (2m apart)
-    - Categories: Stray Dog + Pothole (no semantic relation)
+    S-08 (Mass Panic): 20x "Fire" in 10m radius within 60 seconds.
     
-    Tests: Semantic rejection
-    Expected: Should KEEP SEPARATE (no correlation)
+    Tests: Mass event detection (viral panic reporting)
+    Expected: Should MERGE into single major incident
     """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    center_lat, center_lng = random_point_in_barangay(brgy)
+    
+    print(f"\n📍 S-08 (Mass Panic): 20x Fire in 10m radius, 60 seconds")
+    print(f"   Barangay: {brgy['name']}")
+    print(f"   Center: ({center_lat:.6f}, {center_lng:.6f})")
+    
+    for i in range(20):
+        # Random position within 10m radius
+        distance = random.uniform(0, 10)
+        bearing = random.uniform(0, 360)
+        lat, lng = offset_coordinates(center_lat, center_lng, distance, bearing)
+        
+        # Random time within 60 seconds
+        seconds_offset = random.uniform(0, 60)
+        timestamp = base_time + timedelta(seconds=seconds_offset)
+        
+        complaint = create_complaint(
+            complaint_id=generate_id(),
+            user_id=generate_user_id(),  # Different users (panic)
+            timestamp=timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
+            category="Fire",
+            description=random.choice(DESCRIPTIONS["Fire"]),
+            latitude=lat,
+            longitude=lng,
+            barangay=brgy['name'],
+            scenario_tag="S08_mass_panic"
+        )
+        complaints.append(complaint)
+    
+    print(f"   ✓ Created 20 Fire complaints (10m radius, 60s window)")
+    print(f"   Expected Result: MERGE (mass event detection)")
+    
+    return complaints
+
+
+def generate_scenario_S12_spam_bot(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-12 (Spam Bot): 50 complaints. Random locs. Identical Timestamp (down to the ms).
+    
+    Tests: Bot/spam detection via impossible timing
+    Expected: Should FLAG as suspicious (humanly impossible)
+    """
+    complaints = []
+    
+    # Exact timestamp down to millisecond
+    exact_timestamp = base_time.strftime("%Y-%m-%dT%H:%M:%S.000")
+    bot_user = "u_BOT_SPAM_001"
+    categories = list(CATEGORY_EPSILON.keys())
+    
+    print(f"\n📍 S-12 (Spam Bot): 50 complaints with IDENTICAL timestamp")
+    print(f"   Timestamp: {exact_timestamp}")
+    print(f"   User: {bot_user}")
+    
+    for i in range(50):
+        brgy = random.choice(barangays)
+        lat, lng = random_point_in_barangay(brgy)
+        category = random.choice(categories)
+        
+        complaint = create_complaint(
+            complaint_id=generate_id(),
+            user_id=bot_user,  # Same suspicious user
+            timestamp=exact_timestamp,  # EXACT same timestamp (impossible)
+            category=category,
+            description=random.choice(DESCRIPTIONS.get(category, ["Test complaint"])),
+            latitude=lat,
+            longitude=lng,
+            barangay=brgy['name'],
+            scenario_tag="S12_spam_bot"
+        )
+        complaints.append(complaint)
+    
+    print(f"   ✓ Created 50 complaints with IDENTICAL timestamp")
+    print(f"   Expected Result: FLAG as spam/bot activity")
+    
+    return complaints
+
+
+def generate_scenario_S14_default_pin(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-14 (Default Pin): 10 complaints stacked at map center (0,0) or city center.
+    
+    Tests: Default/unset coordinates detection
+    Expected: Should FLAG as invalid location data
+    """
+    complaints = []
+    
+    # Get city center as "default" location (could also use 0,0)
+    all_centroids = [get_barangay_centroid(b) for b in barangays]
+    default_lat = sum(c[0] for c in all_centroids) / len(all_centroids)
+    default_lng = sum(c[1] for c in all_centroids) / len(all_centroids)
+    
+    print(f"\n📍 S-14 (Default Pin): 10 complaints at map center")
+    print(f"   Default Location: ({default_lat:.6f}, {default_lng:.6f})")
+    
+    categories = list(CATEGORY_EPSILON.keys())
+    
+    for i in range(10):
+        category = random.choice(categories)
+        
+        complaint = create_complaint(
+            complaint_id=generate_id(),
+            user_id=generate_user_id(),
+            timestamp=random_timestamp(base_time, 48.0),  # Random over 2 days
+            category=category,
+            description=random.choice(DESCRIPTIONS.get(category, ["Test complaint"])),
+            latitude=default_lat,  # All at default center
+            longitude=default_lng,
+            barangay="Unknown",  # No valid barangay
+            scenario_tag="S14_default_pin"
+        )
+        complaints.append(complaint)
+    
+    print(f"   ✓ Created 10 complaints at default map center")
+    print(f"   Expected Result: FLAG as default/unset location")
+    
+    return complaints
+
+
+def generate_scenario_S15_null_data(base_time: datetime, barangays: List[Dict]) -> List[Dict]:
+    """
+    S-15 (Null Data): 1 record lat: null. 1 record category: null.
+    
+    Tests: Null/missing data handling
+    Expected: Should handle gracefully without crashing
+    """
+    complaints = []
+    
+    brgy = random.choice(barangays)
+    valid_lat, valid_lng = random_point_in_barangay(brgy)
+    
+    print(f"\n📍 S-15 (Null Data): Testing null values handling")
+    
+    # Record with null latitude
+    null_lat_complaint = {
+        "id": generate_id(),
+        "user_id": generate_user_id(),
+        "timestamp": base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "category": "Pothole",
+        "description": "May lubak dito sa daan",
+        "keywords": ["lubak"],
+        "keyword_categories": ["Pothole"],
+        "keyword_relevance": 0.8,
+        "urgency": "medium",
+        "latitude": None,  # NULL latitude
+        "longitude": valid_lng,
+        "status": "PENDING",
+        "barangay": brgy['name'],
+        "_scenario": "S15_null_lat"
+    }
+    complaints.append(null_lat_complaint)
+    print(f"   ✓ Created complaint with NULL latitude")
+    
+    # Record with null category
+    null_cat_complaint = {
+        "id": generate_id(),
+        "user_id": generate_user_id(),
+        "timestamp": base_time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "category": None,  # NULL category
+        "description": "May problema dito pero di ko alam kung ano",
+        "keywords": [],
+        "keyword_categories": [],
+        "keyword_relevance": 0.0,
+        "urgency": "low",
+        "latitude": valid_lat,
+        "longitude": valid_lng,
+        "status": "PENDING",
+        "barangay": brgy['name'],
+        "_scenario": "S15_null_cat"
+    }
+    complaints.append(null_cat_complaint)
+    print(f"   ✓ Created complaint with NULL category")
+    
+    print(f"   Expected Result: Handle gracefully (no crash)")
+    
+    return complaints
     complaints = []
     
     brgy = random.choice(barangays)
@@ -668,7 +1427,8 @@ def main():
     """Main function to generate all mock data."""
     
     print("=" * 60)
-    print("  CitizenLink - Synthetic Test Data Generator")
+    print("  CitizenLink - Synthetic Test Data Generator v3.0")
+    print("  15 Test Scenarios + Random Complaints")
     print("  Using actual Digos City barangay boundaries")
     print("=" * 60)
     
@@ -682,20 +1442,46 @@ def main():
         print(f"      - {brgy['name']}")
     
     # Base timestamp: Today
-    base_time = datetime(2026, 1, 8, 10, 0, 0)
+    base_time = datetime(2026, 1, 11, 10, 0, 0)
     
     all_complaints = []
     
-    # Generate each scenario
-    all_complaints.extend(generate_scenario_1_main_event(base_time, barangays))
-    all_complaints.extend(generate_scenario_2_duplicate_spammer(base_time + timedelta(hours=1), barangays))
-    all_complaints.extend(generate_scenario_3_discrete_neighbors(base_time + timedelta(hours=2), barangays))
-    all_complaints.extend(generate_scenario_4_old_news(base_time + timedelta(hours=3), barangays))
-    all_complaints.extend(generate_scenario_5_false_positive(base_time + timedelta(hours=4), barangays))
+    # ==================== GROUP A: SPATIAL LOGIC ====================
+    print("\n" + "=" * 60)
+    print("  GROUP A: SPATIAL LOGIC")
+    print("=" * 60)
     
-    # Generate random complaints to reach 500-600 total
+    all_complaints.extend(generate_scenario_S01_redundancy(base_time, barangays))
+    all_complaints.extend(generate_scenario_S03_discrete(base_time + timedelta(hours=1), barangays))
+    all_complaints.extend(generate_scenario_S07_precision_edge(base_time + timedelta(hours=2), barangays))
+    all_complaints.extend(generate_scenario_S09_gps_drift(base_time + timedelta(hours=3), barangays))
+    all_complaints.extend(generate_scenario_S13_moving_hazard(base_time + timedelta(hours=4), barangays))
+    
+    # ==================== GROUP B: SEMANTIC LOGIC ====================
+    print("\n" + "=" * 60)
+    print("  GROUP B: SEMANTIC LOGIC")
+    print("=" * 60)
+    
+    all_complaints.extend(generate_scenario_S02_causal(base_time + timedelta(hours=5), barangays))
+    all_complaints.extend(generate_scenario_S05_false_correlation(base_time + timedelta(hours=6), barangays))
+    all_complaints.extend(generate_scenario_S06_domino_chain(base_time + timedelta(hours=7), barangays))
+    all_complaints.extend(generate_scenario_S10_conflict(base_time + timedelta(hours=8), barangays))
+    all_complaints.extend(generate_scenario_S11_synonyms(base_time + timedelta(hours=9), barangays))
+    
+    # ==================== GROUP C: DATA INTEGRITY ====================
+    print("\n" + "=" * 60)
+    print("  GROUP C: DATA INTEGRITY")
+    print("=" * 60)
+    
+    all_complaints.extend(generate_scenario_S04_time_decay(base_time + timedelta(hours=10), barangays))
+    all_complaints.extend(generate_scenario_S08_mass_panic(base_time + timedelta(hours=11), barangays))
+    all_complaints.extend(generate_scenario_S12_spam_bot(base_time + timedelta(hours=12), barangays))
+    all_complaints.extend(generate_scenario_S14_default_pin(base_time + timedelta(hours=13), barangays))
+    all_complaints.extend(generate_scenario_S15_null_data(base_time + timedelta(hours=14), barangays))
+    
+    # Generate random complaints to pad the dataset
     scenario_count = len(all_complaints)
-    random_count = random.randint(500, 600) - scenario_count
+    random_count = random.randint(800, 1200) - scenario_count
     if random_count > 0:
         all_complaints.extend(generate_random_complaints(base_time, barangays, random_count))
     
@@ -704,7 +1490,7 @@ def main():
     
     # Re-assign sequential IDs for cleaner output
     for i, complaint in enumerate(all_complaints, 1):
-        complaint["id"] = f"C-{i:03d}"
+        complaint["id"] = f"C-{i:04d}"
     
     # Calculate city center from all barangay centroids
     all_centroids = [get_barangay_centroid(b) for b in barangays]
@@ -715,7 +1501,7 @@ def main():
     output = {
         "metadata": {
             "generated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "generator": "CitizenLink Synthetic Data Generator v2.0",
+            "generator": "CitizenLink Synthetic Data Generator v3.0",
             "total_records": len(all_complaints),
             "base_location": {
                 "city": "Digos City",
@@ -724,12 +1510,28 @@ def main():
             },
             "barangays": [b['name'] for b in barangays],
             "barangay_count": len(barangays),
-            "scenarios": {
-                "scenario_1": "Main Event (Pipe + Flooding) - 5 records",
-                "scenario_2": "Duplicate Spammer - 3 records",
-                "scenario_3": "Discrete Neighbors (No Water) - 2 records",
-                "scenario_4": "Old News (Time Decay) - 2 records",
-                "scenario_5": "False Positive - 2 records",
+            "test_scenarios": {
+                "group_a_spatial": {
+                    "S01_redundancy": "3x Pothole at exact same location (0m diff)",
+                    "S03_discrete": "2x No Water exactly 15m apart (should NOT merge)",
+                    "S07_precision_edge": "Center + 24.9m (merge) + 25.1m (no merge)",
+                    "S09_gps_drift": "5x Streetlight from same user in 7m radius",
+                    "S13_moving_hazard": "Stray Dog at 0m and 60m, 5 mins apart"
+                },
+                "group_b_semantic": {
+                    "S02_causal": "Pipe Leak + Flood 10m apart (cause-effect)",
+                    "S05_false_correlation": "Stray Dog + Pothole 1m apart (unrelated)",
+                    "S06_domino_chain": "Pipe -> Flood -> Traffic cascade",
+                    "S10_conflict": "Fire + Pothole at EXACT same location",
+                    "S11_synonyms": "'Baha' vs 'Rising Water' 5m apart"
+                },
+                "group_c_integrity": {
+                    "S04_time_decay": "2x Trash, today vs 90 days ago",
+                    "S08_mass_panic": "20x Fire in 10m radius, 60 seconds",
+                    "S12_spam_bot": "50 complaints with identical timestamp",
+                    "S14_default_pin": "10 complaints at map center",
+                    "S15_null_data": "Records with null lat/category"
+                },
                 "random": f"Random complaints - {random_count} records"
             },
             "category_epsilon": CATEGORY_EPSILON
@@ -758,7 +1560,7 @@ def main():
     print("\n📊 Summary by Category:")
     category_counts = {}
     for c in all_complaints:
-        cat = c["category"]
+        cat = c.get("category") or "NULL"  # Handle null categories
         category_counts[cat] = category_counts.get(cat, 0) + 1
     for cat, cnt in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
         print(f"   • {cat}: {cnt} records")

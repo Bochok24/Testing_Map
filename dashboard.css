@@ -216,19 +216,74 @@ body {
     flex-direction: column;
     gap: 10px;
     margin-bottom: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.scenarios-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.scenarios-list::-webkit-scrollbar-track {
+    background: var(--card-bg);
+    border-radius: 2px;
+}
+
+.scenarios-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+}
+
+.scenarios-list::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-blue);
+}
+
+.scenario-group {
+    margin-bottom: 12px;
+}
+
+.scenario-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent-blue);
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent-blue);
+}
+
+.scenario-group:nth-child(2) .scenario-group-title {
+    color: var(--accent-purple);
+    background: rgba(139, 92, 246, 0.1);
+    border-left-color: var(--accent-purple);
+}
+
+.scenario-group:nth-child(3) .scenario-group-title {
+    color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: var(--accent-red);
 }
 
 .scenario-btn {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 16px;
+    gap: 12px;
+    padding: 10px 12px;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
     color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.scenario-btn:last-child {
+    margin-bottom: 0;
 }
 
 .scenario-btn:hover {
@@ -245,22 +300,22 @@ body {
 }
 
 .scenario-btn i {
-    font-size: 20px;
+    font-size: 16px;
     color: var(--accent-blue);
-    width: 24px;
+    width: 20px;
     text-align: center;
 }
 
 .scenario-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     flex: 1;
     text-align: left;
 }
 
 .scenario-label {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-secondary);
     font-weight: 500;
     text-transform: uppercase;
@@ -268,7 +323,7 @@ body {
 }
 
 .scenario-name {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-primary);
 }
@@ -522,6 +577,55 @@ body {
 .verdict-text.rejected {
     background: rgba(220, 38, 38, 0.2);
     color: var(--error);
+}
+
+/* ==================== KEYWORD STYLES ==================== */
+.inspector-field.keyword-field {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.inspector-field.keyword-field label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.inspector-field.keyword-field label i {
+    color: var(--accent-purple);
+}
+
+.keyword-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+}
+
+.keyword-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-purple);
+    text-transform: lowercase;
+}
+
+.keyword-strong {
+    color: var(--accent-green) !important;
+    font-weight: 700;
+}
+
+.keyword-moderate {
+    color: var(--accent-yellow) !important;
+}
+
+.keyword-weak {
+    color: var(--text-secondary);
 }
 
 /* ==================== STATUS OVERLAY ==================== */

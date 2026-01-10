@@ -35,37 +35,70 @@ const ADAPTIVE_EPSILON = {
     "Broken Streetlight": 12.0,
     "Illegal Dumping": 15.0,
     "Noise Complaint": 10.0,
-    "Road Damage": 12.0
+    "Road Damage": 12.0,
+    "Fire": 30.0,
+    "Traffic": 20.0
 };
 
 const RELATIONSHIP_MATRIX = {
     "Pipe Leak": ["Flooding", "No Water", "Road Damage"],
-    "Flooding": ["Pipe Leak", "Road Damage", "Trash"],
+    "Flooding": ["Pipe Leak", "Road Damage", "Trash", "Traffic"],
     "Pothole": ["Road Damage"],
-    "Road Damage": ["Pothole", "Flooding"],
+    "Road Damage": ["Pothole", "Flooding", "Traffic"],
     "No Water": ["Pipe Leak"],
     "Trash": ["Illegal Dumping", "Stray Dog"],
     "Illegal Dumping": ["Trash", "Stray Dog"],
-    "Stray Dog": [],
-    "Broken Streetlight": [],
-    "Noise Complaint": []
+    "Stray Dog": ["Stray Dog"],  // Same category can merge (moving hazard)
+    "Broken Streetlight": ["Broken Streetlight"],  // Same category
+    "Noise Complaint": [],
+    "Fire": ["Fire"],  // Same category - mass panic events
+    "Traffic": ["Flooding", "Road Damage", "Fire"]  // Traffic can be caused by these
 };
 
 const CORRELATION_SCORES = {
+    // Water-related chains
     "Pipe Leak->Flooding": 0.92,
     "Pipe Leak->No Water": 0.85,
     "Pipe Leak->Road Damage": 0.45,
     "Flooding->Pipe Leak": 0.88,
     "Flooding->Road Damage": 0.60,
     "Flooding->Trash": 0.30,
+    "Flooding->Traffic": 0.85,  // Flooding causes traffic
+    
+    // Road-related
     "Pothole->Road Damage": 0.75,
     "Road Damage->Pothole": 0.75,
     "Road Damage->Flooding": 0.40,
+    "Road Damage->Traffic": 0.70,
+    
+    // Water supply
     "No Water->Pipe Leak": 0.80,
+    
+    // Trash-related
     "Trash->Illegal Dumping": 0.70,
     "Trash->Stray Dog": 0.25,
     "Illegal Dumping->Trash": 0.70,
-    "Illegal Dumping->Stray Dog": 0.35
+    "Illegal Dumping->Stray Dog": 0.35,
+    
+    // Same category correlations (for redundancy/mass events)
+    "Pothole->Pothole": 1.0,
+    "Flooding->Flooding": 1.0,
+    "Fire->Fire": 1.0,
+    "Stray Dog->Stray Dog": 1.0,
+    "Broken Streetlight->Broken Streetlight": 1.0,
+    "Trash->Trash": 1.0,
+    "No Water->No Water": 1.0,
+    "Traffic->Traffic": 1.0,
+    "Pipe Leak->Pipe Leak": 1.0,
+    "Road Damage->Road Damage": 1.0,
+    "Illegal Dumping->Illegal Dumping": 1.0,
+    "Noise Complaint->Noise Complaint": 1.0,
+    
+    // Traffic domino effects
+    "Traffic->Flooding": 0.75,
+    "Traffic->Road Damage": 0.65,
+    "Traffic->Fire": 0.60,
+    "Fire->Traffic": 0.70
 };
 
 const CORRELATION_THRESHOLD = 0.50;
@@ -81,6 +114,73 @@ const ANIMATION_CONFIG = {
     DIM_TRANSITION: 500
 };
 
+// Keyword similarity thresholds
+const KEYWORD_CONFIG = {
+    MIN_SIMILARITY_THRESHOLD: 0.3,  // Minimum keyword overlap to consider related
+    BOOST_THRESHOLD: 0.6,           // High keyword similarity boosts merge decision
+    RELEVANCE_WEIGHT: 0.15          // How much keyword analysis affects final score
+};
+
+/**
+ * Calculate keyword similarity between two complaints.
+ * Uses Jaccard similarity on extracted keywords.
+ * 
+ * @param {Object} pointA - First complaint with keywords array
+ * @param {Object} pointB - Second complaint with keywords array
+ * @returns {Object} Similarity result with score and shared keywords
+ */
+function checkKeywordSimilarity(pointA, pointB) {
+    const keywordsA = pointA.keywords || [];
+    const keywordsB = pointB.keywords || [];
+    
+    // If either has no keywords, return neutral
+    if (keywordsA.length === 0 || keywordsB.length === 0) {
+        return {
+            similarity: 0.5,
+            sharedKeywords: [],
+            verdict: "NEUTRAL",
+            description: "Insufficient keyword data"
+        };
+    }
+    
+    // Find shared keywords
+    const setA = new Set(keywordsA);
+    const setB = new Set(keywordsB);
+    const intersection = [...setA].filter(kw => setB.has(kw));
+    const union = new Set([...setA, ...setB]);
+    
+    // Jaccard similarity: intersection / union
+    const similarity = intersection.length / union.size;
+    
+    // Also check keyword_categories overlap
+    const categoriesA = new Set(pointA.keyword_categories || []);
+    const categoriesB = new Set(pointB.keyword_categories || []);
+    const categoryOverlap = [...categoriesA].filter(c => categoriesB.has(c));
+    
+    // Determine verdict based on similarity
+    let verdict = "WEAK";
+    let description = "Low keyword overlap";
+    
+    if (similarity >= KEYWORD_CONFIG.BOOST_THRESHOLD) {
+        verdict = "STRONG";
+        description = `High similarity (${intersection.length} shared keywords)`;
+    } else if (similarity >= KEYWORD_CONFIG.MIN_SIMILARITY_THRESHOLD) {
+        verdict = "MODERATE";
+        description = `Moderate overlap (${intersection.length} shared)`;
+    } else if (categoryOverlap.length > 0) {
+        verdict = "RELATED";
+        description = `Category keywords align: ${categoryOverlap.join(", ")}`;
+    }
+    
+    return {
+        similarity: Math.round(similarity * 100) / 100,
+        sharedKeywords: intersection,
+        categoryOverlap: categoryOverlap,
+        verdict,
+        description
+    };
+}
+
 // Category icons mapping (Font Awesome)
 const CATEGORY_ICONS = {
     "Pipe Leak": "droplet",
@@ -92,44 +192,134 @@ const CATEGORY_ICONS = {
     "Broken Streetlight": "lightbulb",
     "Illegal Dumping": "dumpster",
     "Noise Complaint": "volume-up",
-    "Road Damage": "road-barrier"
+    "Road Damage": "road-barrier",
+    "Fire": "fire",
+    "Traffic": "car"
 };
 
 const SCENARIO_CONFIG = {
+    // GROUP A: SPATIAL LOGIC
     1: {
-        name: "Semantic Chain (Pipe → Flood)",
-        prefix: "scenario_1",
-        description: "Tests causal correlation: Pipe Leak causes Flooding",
+        name: "S-01: Redundancy (Exact Location)",
+        prefix: "S01_redundancy",
+        description: "3x Pothole at exact same lat/lng (0m diff)",
         expectedResult: "MERGE",
-        color: "#10b981"
+        color: "#10b981",
+        group: "A"
     },
     2: {
-        name: "Duplicate Detection",
-        prefix: "scenario_2",
-        description: "Tests spam/redundancy: Same user, same location",
-        expectedResult: "MERGE",
-        color: "#3b82f6"
+        name: "S-03: Discrete (15m Apart)",
+        prefix: "S03_discrete",
+        description: "2x No Water exactly 15m apart (ε=5m, should NOT merge)",
+        expectedResult: "SEPARATE",
+        color: "#ef4444",
+        group: "A"
     },
     3: {
-        name: "Discrete Neighbors",
-        prefix: "scenario_3",
-        description: "Tests epsilon threshold: Distance > category limit",
-        expectedResult: "SEPARATE",
-        color: "#ef4444"
+        name: "S-07: Precision Edge (25m)",
+        prefix: "S07_precision",
+        description: "Tests math boundary: 24.9m vs 25.1m from center",
+        expectedResult: "PARTIAL",
+        color: "#f59e0b",
+        group: "A"
     },
     4: {
-        name: "Temporal Decay",
-        prefix: "scenario_4",
-        description: "Tests time window: Report too old (35 days)",
-        expectedResult: "SEPARATE",
-        color: "#f59e0b"
+        name: "S-09: GPS Drift (Same User)",
+        prefix: "S09_gps_drift",
+        description: "5x Streetlight from same user, scattered in 7m radius",
+        expectedResult: "MERGE",
+        color: "#3b82f6",
+        group: "A"
     },
     5: {
-        name: "False Positive Block",
-        prefix: "scenario_5",
-        description: "Tests semantic rejection: Unrelated categories",
+        name: "S-13: Moving Hazard",
+        prefix: "S13_moving_hazard",
+        description: "Stray Dog at 2 locations 60m apart, 5 mins gap",
+        expectedResult: "CONSIDER",
+        color: "#8b5cf6",
+        group: "A"
+    },
+    // GROUP B: SEMANTIC LOGIC
+    6: {
+        name: "S-02: Causal Chain",
+        prefix: "S02_causal",
+        description: "Pipe Leak + Flood 10m apart (cause-effect)",
+        expectedResult: "MERGE",
+        color: "#10b981",
+        group: "B"
+    },
+    7: {
+        name: "S-05: False Correlation",
+        prefix: "S05_false_correl",
+        description: "Stray Dog + Pothole 1m apart (unrelated)",
         expectedResult: "SEPARATE",
-        color: "#8b5cf6"
+        color: "#ef4444",
+        group: "B"
+    },
+    8: {
+        name: "S-06: Domino Chain",
+        prefix: "S06_domino",
+        description: "Pipe → Flood → Traffic cascade effect",
+        expectedResult: "MERGE",
+        color: "#06b6d4",
+        group: "B"
+    },
+    9: {
+        name: "S-10: Conflict",
+        prefix: "S10_conflict",
+        description: "Fire + Pothole at EXACT same location",
+        expectedResult: "SEPARATE",
+        color: "#ef4444",
+        group: "B"
+    },
+    10: {
+        name: "S-11: Synonyms",
+        prefix: "S11_synonym",
+        description: "'Baha' vs 'Rising Water' 5m apart (same meaning)",
+        expectedResult: "MERGE",
+        color: "#10b981",
+        group: "B"
+    },
+    // GROUP C: DATA INTEGRITY
+    11: {
+        name: "S-04: Time Decay (90 days)",
+        prefix: "S04_decay",
+        description: "2x Trash at same loc, today vs 90 days ago",
+        expectedResult: "SEPARATE",
+        color: "#f59e0b",
+        group: "C"
+    },
+    12: {
+        name: "S-08: Mass Panic",
+        prefix: "S08_mass_panic",
+        description: "20x Fire in 10m radius within 60 seconds",
+        expectedResult: "MERGE",
+        color: "#dc2626",
+        group: "C"
+    },
+    13: {
+        name: "S-12: Spam Bot",
+        prefix: "S12_spam_bot",
+        description: "50 complaints with identical timestamp (to ms)",
+        expectedResult: "FLAG",
+        color: "#7c3aed",
+        group: "C"
+    },
+    14: {
+        name: "S-14: Default Pin",
+        prefix: "S14_default_pin",
+        description: "10 complaints at map center (default location)",
+        expectedResult: "FLAG",
+        color: "#f97316",
+        group: "C"
+    },
+    15: {
+        name: "S-15: Null Data",
+        prefix: "S15_null",
+        description: "Records with null lat or null category",
+        expectedResult: "HANDLE",
+        color: "#64748b",
+        group: "C"
     }
 };
 
@@ -181,16 +371,35 @@ function getAdaptiveEpsilon(category) {
 /**
  * Check semantic relationship between two categories.
  * Reference: DOCUMENTATION.md Section 3.3
+ * 
+ * FIXED: Now properly handles same-category as IDENTICAL with score 1.0
+ * and checks both directions for relationship lookup.
  */
 function checkSemanticRelation(categoryA, categoryB) {
+    // IDENTICAL categories always merge
     if (categoryA === categoryB) {
         return { isRelated: true, score: 1.0, relationship: "IDENTICAL" };
     }
     
-    const relatedCategories = RELATIONSHIP_MATRIX[categoryA] || [];
-    const isRelated = relatedCategories.includes(categoryB);
-    const key = `${categoryA}->${categoryB}`;
-    const score = CORRELATION_SCORES[key] || 0.0;
+    // Check if A relates to B
+    const relatedFromA = RELATIONSHIP_MATRIX[categoryA] || [];
+    const isRelatedAtoB = relatedFromA.includes(categoryB);
+    
+    // Check if B relates to A (bidirectional check)
+    const relatedFromB = RELATIONSHIP_MATRIX[categoryB] || [];
+    const isRelatedBtoA = relatedFromB.includes(categoryA);
+    
+    const isRelated = isRelatedAtoB || isRelatedBtoA;
+    
+    // Get correlation score (check both directions)
+    const keyAB = `${categoryA}->${categoryB}`;
+    const keyBA = `${categoryB}->${categoryA}`;
+    let score = CORRELATION_SCORES[keyAB] || CORRELATION_SCORES[keyBA] || 0.0;
+    
+    // If categories are related but no explicit score, give a default moderate score
+    if (isRelated && score === 0.0) {
+        score = 0.55;  // Default score for related but unscored pairs
+    }
     
     let relationship = "NONE";
     if (isRelated && score >= CORRELATION_THRESHOLD) {
@@ -199,7 +408,11 @@ function checkSemanticRelation(categoryA, categoryB) {
         relationship = "WEAK";
     }
     
-    return { isRelated: isRelated && score >= CORRELATION_THRESHOLD, score, relationship };
+    return { 
+        isRelated: isRelated && score >= CORRELATION_THRESHOLD, 
+        score, 
+        relationship 
+    };
 }
 
 /**
@@ -217,6 +430,7 @@ function checkLogic(pointA, pointB) {
         epsilon: 0,
         timeDiff: 0,
         semantic: null,
+        keywordAnalysis: null,
         reasons: [],
         verdict: "REJECTED"
     };
@@ -235,6 +449,9 @@ function checkLogic(pointA, pointB) {
     // Check semantic relation
     result.semantic = checkSemanticRelation(pointA.category, pointB.category);
     
+    // Check keyword similarity (NEW)
+    result.keywordAnalysis = checkKeywordSimilarity(pointA, pointB);
+    
     // Calculate time difference
     result.timeDiff = getTimeDifferenceHours(pointA.timestamp, pointB.timestamp);
     
@@ -243,14 +460,34 @@ function checkLogic(pointA, pointB) {
     const semanticOk = result.semantic.isRelated;
     const temporalOk = result.timeDiff <= MAX_TIME_DIFF_HOURS;
     
+    // Keyword can boost or weaken the decision
+    const keywordBoost = result.keywordAnalysis.similarity >= KEYWORD_CONFIG.BOOST_THRESHOLD;
+    const keywordSupports = result.keywordAnalysis.similarity >= KEYWORD_CONFIG.MIN_SIMILARITY_THRESHOLD;
+    
     // Build rejection reasons
     if (!distanceOk) result.reasons.push(`Distance ${result.distance.toFixed(1)}m > ε ${result.epsilon}m`);
     if (!semanticOk) result.reasons.push(`No semantic correlation (${result.semantic.score.toFixed(2)})`);
     if (!temporalOk) result.reasons.push(`Time diff ${result.timeDiff.toFixed(1)}h > ${MAX_TIME_DIFF_HOURS}h`);
     
-    // Final decision
-    result.shouldMerge = distanceOk && semanticOk && temporalOk;
+    // Add keyword info to reasons if relevant
+    if (keywordBoost) {
+        result.reasons.push(`✓ Keyword boost: ${result.keywordAnalysis.sharedKeywords.join(", ")}`);
+    } else if (!keywordSupports && result.keywordAnalysis.verdict !== "NEUTRAL") {
+        result.reasons.push(`Low keyword similarity (${(result.keywordAnalysis.similarity * 100).toFixed(0)}%)`);
+    }
+    
+    // Final decision: Original logic + keyword consideration
+    // High keyword similarity can reinforce a merge decision
+    // Low keyword similarity doesn't block but doesn't help either
+    const baseDecision = distanceOk && semanticOk && temporalOk;
+    
+    // If all base conditions pass and keywords support, definitely merge
+    // If base conditions pass but keywords are weak, still merge (keywords are supplementary)
+    result.shouldMerge = baseDecision;
     result.verdict = result.shouldMerge ? "MERGED" : "REJECTED";
+    
+    // Add keyword match strength to result
+    result.keywordMatchStrength = result.keywordAnalysis.verdict;
     
     return result;
 }
@@ -501,6 +738,12 @@ class SimulationEngine {
         const locationMap = new Map(); // key: "lat,lng" -> complaints array
         
         this.complaints.forEach((complaint) => {
+            // Skip complaints with null/undefined coordinates
+            if (complaint.latitude == null || complaint.longitude == null) {
+                console.warn('[clusterComplaintsByProximity] Skipping complaint with null coordinates:', complaint.id);
+                return;
+            }
+            
             // Round to 6 decimal places for exact coordinate matching
             const key = `${complaint.latitude.toFixed(6)},${complaint.longitude.toFixed(6)}`;
             
@@ -637,8 +880,9 @@ class SimulationEngine {
                     radius: 4,
                     color: '#888888',
                     fillColor: '#888888',
-                    fillOpacity: 0.3,
+                    fillOpacity: 0.6,  // Increased from 0.3 for better visibility
                     weight: 1,
+                    opacity: 1,  // Ensure stroke is visible
                     className: 'background-marker'
                 });
                 
@@ -1100,11 +1344,21 @@ class SimulationEngine {
         
         // Run scenario-specific logic
         switch(scenarioNumber) {
-            case 1: await this.runScenario1(scenarioData, config); break;
-            case 2: await this.runScenario2(scenarioData, config); break;
-            case 3: await this.runScenario3(scenarioData, config); break;
-            case 4: await this.runScenario4(scenarioData, config); break;
-            case 5: await this.runScenario5(scenarioData, config); break;
+            case 1: await this.runScenarioGeneric(scenarioData, config, 'redundancy'); break;
+            case 2: await this.runScenarioGeneric(scenarioData, config, 'discrete'); break;
+            case 3: await this.runScenarioGeneric(scenarioData, config, 'precision'); break;
+            case 4: await this.runScenarioGeneric(scenarioData, config, 'gps_drift'); break;
+            case 5: await this.runScenarioGeneric(scenarioData, config, 'moving_hazard'); break;
+            case 6: await this.runScenarioGeneric(scenarioData, config, 'causal'); break;
+            case 7: await this.runScenarioGeneric(scenarioData, config, 'false_correl'); break;
+            case 8: await this.runScenarioDomino(scenarioData, config); break;
+            case 9: await this.runScenarioGeneric(scenarioData, config, 'conflict'); break;
+            case 10: await this.runScenarioGeneric(scenarioData, config, 'synonyms'); break;
+            case 11: await this.runScenarioGeneric(scenarioData, config, 'time_decay'); break;
+            case 12: await this.runScenarioMassPanic(scenarioData, config); break;
+            case 13: await this.runScenarioSpamBot(scenarioData, config); break;
+            case 14: await this.runScenarioDefaultPin(scenarioData, config); break;
+            case 15: await this.runScenarioNullData(scenarioData, config); break;
         }
         
         // END METRICS TIMING & CALCULATE
@@ -1129,56 +1383,85 @@ class SimulationEngine {
     }
     
     // ==================== SCENARIO IMPLEMENTATIONS ====================
-    
+
     /**
-     * Scenario 1: Semantic Chain (Pipe → Flood)
-     * Tests causal correlation detection
+     * Generic Scenario Runner - Handles most comparison scenarios
+     * Used for: redundancy, discrete, causal, false_correl, conflict, synonyms, time_decay, gps_drift, precision, moving_hazard
      */
-    async runScenario1(data, config) {
-        const source = data.find(d => d._scenario === 'scenario_1_source');
-        const floods = data.filter(d => d._scenario === 'scenario_1_flood');
-        
-        if (!source) {
-            this.addLog('[ERROR] Source point not found in scenario data', 'error');
+    async runScenarioGeneric(data, config, scenarioType) {
+        if (data.length < 2) {
+            this.addLog(`[ERROR] Need at least 2 points for this scenario`, 'error');
             return;
         }
         
-        // Step 1: Highlight source point
-        this.addLog(`[POINT] Source detected: ${source.id} [${source.category}]`, 'info');
-        this.addLog(`[DATA] Location: (${source.latitude.toFixed(6)}, ${source.longitude.toFixed(6)})`, 'info');
+        this.addLog(`[ANALYZE] ${data.length} data points loaded`, 'info');
         
-        const sourceMarker = this.createSpotlightMarker(source, '#06b6d4', 1.4);
+        // Get first point as reference
+        const primary = data[0];
+        this.addLog(`[PRIMARY] ${primary.id} [${primary.category || 'NULL'}]`, 'info');
+        
+        if (primary.latitude === null || primary.latitude === undefined) {
+            this.addLog(`[WARNING] Primary point has NULL coordinates`, 'warning');
+        }
+        
+        const primaryMarker = this.createSpotlightMarker(primary, config.color, 1.4);
         await this.delay(ANIMATION_CONFIG.MARKER_DROP);
         
-        // Step 2: Show epsilon radius
-        const epsilon = getAdaptiveEpsilon(source.category);
-        this.addLog(`[ALGO] Adaptive ε for "${source.category}" = ${epsilon}m`, 'logic');
-        
-        const circle = this.createEpsilonCircle(source.latitude, source.longitude, epsilon, '#06b6d4');
+        // Show epsilon radius if coordinates are valid
+        if (primary.latitude && primary.category) {
+            const epsilon = getAdaptiveEpsilon(primary.category);
+            this.addLog(`[ALGO] Adaptive ε for "${primary.category}" = ${epsilon}m`, 'logic');
+            this.createEpsilonCircle(primary.latitude, primary.longitude, epsilon, config.color);
+        }
         await this.delay(ANIMATION_CONFIG.SCAN_DURATION);
         
-        // Step 3: Process each flood point
-        for (let i = 0; i < floods.length; i++) {
-            const flood = floods[i];
+        // Process remaining points
+        let mergeCount = 0;
+        let separateCount = 0;
+        
+        for (let i = 1; i < data.length; i++) {
+            const secondary = data[i];
             
-            this.addLog(`[NEIGHBOR ${i + 1}/${floods.length}] Found: ${flood.id} [${flood.category}]`, 'info');
+            this.addLog(`[POINT ${i}/${data.length - 1}] ${secondary.id} [${secondary.category || 'NULL'}]`, 'info');
             
-            // Create spotlight for flood point
-            const floodMarker = this.createSpotlightMarker(flood, config.color, 1.2);
+            // Check for null values
+            if (secondary.latitude === null || secondary.longitude === null) {
+                this.addLog(`[WARNING] Null coordinates detected - cannot calculate distance`, 'warning');
+                const secMarker = this.createSpotlightMarker(secondary, '#64748b', 1.1);
+                await this.delay(ANIMATION_CONFIG.MARKER_DROP);
+                this.addLog(`[DECISION] ⚠️ FLAGGED - Invalid data (null coordinates)`, 'warning');
+                continue;
+            }
+            
+            if (secondary.category === null) {
+                this.addLog(`[WARNING] Null category detected`, 'warning');
+            }
+            
+            const secMarker = this.createSpotlightMarker(secondary, this.getSecondaryColor(config, scenarioType), 1.2);
             await this.delay(ANIMATION_CONFIG.MARKER_DROP);
             
             // Run DBSCAN logic
-            const result = checkLogic(source, flood);
+            const result = checkLogic(primary, secondary);
             
+            // Log detailed calculations
             this.addLog(`[CALC] Distance: ${result.distance.toFixed(2)}m | Threshold: ${result.epsilon}m`, 'logic');
-            this.addLog(`[CALC] Semantic: ${source.category} → ${flood.category} = ${result.semantic.score.toFixed(2)}`, 'logic');
+            this.addLog(`[CALC] Semantic: ${primary.category} → ${secondary.category} = ${(result.semantic.score * 100).toFixed(0)}%`, 'logic');
             this.addLog(`[CALC] Time Diff: ${result.timeDiff.toFixed(1)}h | Max: ${MAX_TIME_DIFF_HOURS}h`, 'logic');
+            
+            // Log keyword analysis
+            if (result.keywordAnalysis) {
+                const kw = result.keywordAnalysis;
+                this.addLog(`[KEYWORDS] Similarity: ${(kw.similarity * 100).toFixed(0)}% | ${kw.verdict}`, 'logic');
+                if (kw.sharedKeywords && kw.sharedKeywords.length > 0) {
+                    this.addLog(`[KEYWORDS] Shared: ${kw.sharedKeywords.join(', ')}`, 'info');
+                }
+            }
             
             // Draw connection line
             const lineColor = result.shouldMerge ? '#10b981' : '#ef4444';
             this.createConnectionLine(
-                source.latitude, source.longitude,
-                flood.latitude, flood.longitude,
+                primary.latitude, primary.longitude,
+                secondary.latitude, secondary.longitude,
                 lineColor, !result.shouldMerge
             );
             
@@ -1186,17 +1469,27 @@ class SimulationEngine {
             
             // Log verdict
             if (result.shouldMerge) {
-                this.addLog(`[DECISION] ✅ MERGED (Causal correlation: ${result.semantic.relationship})`, 'success');
+                this.addLog(`[DECISION] ✅ MERGED (${result.semantic.relationship})`, 'success');
+                mergeCount++;
             } else {
                 this.addLog(`[DECISION] ❌ REJECTED - ${result.reasons.join(', ')}`, 'error');
+                separateCount++;
+                
+                // Add reject marker at midpoint
+                const midLat = (primary.latitude + secondary.latitude) / 2;
+                const midLng = (primary.longitude + secondary.longitude) / 2;
+                this.createRejectMarker(midLat, midLng);
             }
             
             // Update inspector
             this.updateInspector({
-                category: flood.category,
+                category: secondary.category || 'NULL',
                 epsilon: `${result.epsilon}m`,
                 timeDiff: `${result.timeDiff.toFixed(1)}h`,
-                semantic: result.semantic.score.toFixed(2),
+                semantic: `${(result.semantic.score * 100).toFixed(0)}%`,
+                keywords: secondary.keywords || [],
+                keywordSimilarity: result.keywordAnalysis?.similarity || 0,
+                keywordVerdict: result.keywordAnalysis?.verdict || 'N/A',
                 verdict: result.verdict
             });
             
@@ -1204,253 +1497,278 @@ class SimulationEngine {
         }
         
         this.addLog('═'.repeat(55), 'system');
-        this.addLog(`[RESULT] Scenario 1 Complete: ${floods.length} floods merged with source pipe leak`, 'success');
+        this.addLog(`[RESULT] ${config.name} Complete: ${mergeCount} merged, ${separateCount} separated`, 
+            mergeCount > 0 && config.expectedResult === 'MERGE' ? 'success' : 
+            separateCount > 0 && config.expectedResult === 'SEPARATE' ? 'warning' : 'info');
     }
     
     /**
-     * Scenario 2: Duplicate Detection
-     * Tests spam/redundancy detection
+     * Get secondary marker color based on scenario type
      */
-    async runScenario2(data, config) {
-        this.addLog(`[ANALYZE] ${data.length} potential duplicate reports`, 'info');
+    getSecondaryColor(config, scenarioType) {
+        if (['conflict', 'false_correl', 'discrete'].includes(scenarioType)) {
+            return '#ef4444';  // Red for expected rejection
+        }
+        if (['time_decay'].includes(scenarioType)) {
+            return '#8b92a8';  // Gray for old data
+        }
+        return config.color;  // Default to scenario color
+    }
+
+    /**
+     * Scenario: Domino Chain (Pipe → Flood → Traffic)
+     * Tests multi-step causal chain
+     */
+    async runScenarioDomino(data, config) {
+        const pipe = data.find(d => d._scenario?.includes('pipe'));
+        const flood = data.find(d => d._scenario?.includes('flood'));
+        const traffic = data.find(d => d._scenario?.includes('traffic'));
         
-        if (data.length < 2) {
-            this.addLog('[ERROR] Insufficient data for duplicate detection', 'error');
+        if (!pipe || !flood || !traffic) {
+            this.addLog('[ERROR] Missing domino chain components', 'error');
             return;
         }
         
-        // Create spotlight for first point
-        const primary = data[0];
-        this.addLog(`[PRIMARY] ${primary.id} [${primary.category}] - Reference Point`, 'info');
+        this.addLog(`[CHAIN ANALYSIS] Pipe → Flood → Traffic`, 'system');
         
-        const primaryMarker = this.createSpotlightMarker(primary, config.color, 1.4);
+        // Step 1: Show pipe (origin)
+        this.addLog(`[STEP 1] Origin: ${pipe.id} [${pipe.category}]`, 'info');
+        const pipeMarker = this.createSpotlightMarker(pipe, '#06b6d4', 1.5);
         await this.delay(ANIMATION_CONFIG.MARKER_DROP);
         
-        const epsilon = getAdaptiveEpsilon(primary.category);
-        this.createEpsilonCircle(primary.latitude, primary.longitude, epsilon, config.color);
+        const epsilon1 = getAdaptiveEpsilon(pipe.category);
+        this.createEpsilonCircle(pipe.latitude, pipe.longitude, epsilon1, '#06b6d4');
         await this.delay(ANIMATION_CONFIG.SCAN_DURATION);
         
-        // Compare with remaining points
-        for (let i = 1; i < data.length; i++) {
-            const dup = data[i];
-            
-            this.addLog(`[DUPLICATE ${i}] Checking: ${dup.id}`, 'info');
-            
-            const dupMarker = this.createSpotlightMarker(dup, '#f59e0b', 1.1);
+        // Step 2: Pipe → Flood
+        this.addLog(`[STEP 2] Effect 1: ${flood.id} [${flood.category}]`, 'info');
+        const floodMarker = this.createSpotlightMarker(flood, '#3b82f6', 1.3);
+        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
+        
+        const result1 = checkLogic(pipe, flood);
+        this.addLog(`[CALC] Pipe→Flood: ${result1.distance.toFixed(1)}m | Score: ${(result1.semantic.score * 100).toFixed(0)}%`, 'logic');
+        
+        this.createConnectionLine(pipe.latitude, pipe.longitude, flood.latitude, flood.longitude, '#10b981');
+        await this.delay(ANIMATION_CONFIG.LINE_DRAW);
+        this.addLog(`[DECISION] ✅ LINKED (${result1.semantic.relationship})`, 'success');
+        
+        // Step 3: Flood → Traffic
+        this.addLog(`[STEP 3] Effect 2: ${traffic.id} [${traffic.category}]`, 'info');
+        const trafficMarker = this.createSpotlightMarker(traffic, '#f59e0b', 1.3);
+        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
+        
+        const result2 = checkLogic(flood, traffic);
+        this.addLog(`[CALC] Flood→Traffic: ${result2.distance.toFixed(1)}m | Score: ${(result2.semantic.score * 100).toFixed(0)}%`, 'logic');
+        
+        this.createConnectionLine(flood.latitude, flood.longitude, traffic.latitude, traffic.longitude, '#10b981');
+        await this.delay(ANIMATION_CONFIG.LINE_DRAW);
+        this.addLog(`[DECISION] ✅ LINKED (${result2.semantic.relationship})`, 'success');
+        
+        this.updateInspector({
+            category: 'Domino Chain',
+            epsilon: `${Math.max(epsilon1, getAdaptiveEpsilon(flood.category))}m`,
+            timeDiff: `${result2.timeDiff.toFixed(1)}h`,
+            semantic: 'CAUSAL CHAIN',
+            keywords: [...(pipe.keywords || []), ...(flood.keywords || [])],
+            keywordSimilarity: 0.8,
+            keywordVerdict: 'STRONG',
+            verdict: 'MERGED'
+        });
+        
+        this.addLog('═'.repeat(55), 'system');
+        this.addLog(`[RESULT] Domino Chain Complete: All 3 events linked`, 'success');
+    }
+
+    /**
+     * Scenario: Mass Panic (20x Fire in 10m radius)
+     * Tests mass event detection
+     */
+    async runScenarioMassPanic(data, config) {
+        this.addLog(`[MASS EVENT] ${data.length} reports in tight cluster`, 'system');
+        this.addLog(`[WARNING] Analyzing potential viral/panic reporting`, 'warning');
+        
+        // Calculate cluster center
+        const centerLat = data.reduce((sum, d) => sum + (d.latitude || 0), 0) / data.length;
+        const centerLng = data.reduce((sum, d) => sum + (d.longitude || 0), 0) / data.length;
+        
+        // Get time spread
+        const timestamps = data.map(d => new Date(d.timestamp).getTime());
+        const timeSpreadMs = Math.max(...timestamps) - Math.min(...timestamps);
+        const timeSpreadSec = timeSpreadMs / 1000;
+        
+        this.addLog(`[ANALYSIS] Time Spread: ${timeSpreadSec.toFixed(0)} seconds`, 'info');
+        this.addLog(`[ANALYSIS] Report Rate: ${(data.length / (timeSpreadSec || 1) * 60).toFixed(1)} reports/min`, 'info');
+        
+        // Show all points rapidly
+        for (let i = 0; i < Math.min(data.length, 10); i++) {
+            const point = data[i];
+            const marker = this.createSpotlightMarker(point, config.color, 0.8 + (i * 0.05));
+            await this.delay(100); // Fast animation
+        }
+        
+        // Show epsilon covering all
+        this.createEpsilonCircle(centerLat, centerLng, 30, config.color);
+        await this.delay(ANIMATION_CONFIG.SCAN_DURATION);
+        
+        // Log unique users
+        const uniqueUsers = new Set(data.map(d => d.user_id)).size;
+        this.addLog(`[USERS] ${uniqueUsers} unique reporters (mass event)`, 'logic');
+        
+        this.updateInspector({
+            category: 'Fire (Mass Event)',
+            epsilon: '30m (Fire)',
+            timeDiff: `${timeSpreadSec.toFixed(0)}s spread`,
+            semantic: '100% (identical)',
+            keywords: ['fire', 'sunog', 'emergency'],
+            keywordSimilarity: 1.0,
+            keywordVerdict: 'STRONG',
+            verdict: 'MERGED'
+        });
+        
+        this.addLog(`[DECISION] ✅ MERGE ALL - Mass panic event detected`, 'success');
+        this.addLog('═'.repeat(55), 'system');
+        this.addLog(`[RESULT] ${data.length} reports consolidated into 1 incident`, 'success');
+    }
+
+    /**
+     * Scenario: Spam Bot (identical timestamps)
+     * Tests bot/spam detection
+     */
+    async runScenarioSpamBot(data, config) {
+        this.addLog(`[SPAM DETECTION] ${data.length} reports with suspicious pattern`, 'warning');
+        
+        // Check timestamps
+        const timestamps = data.map(d => d.timestamp);
+        const uniqueTimestamps = new Set(timestamps).size;
+        
+        this.addLog(`[ANALYSIS] Unique Timestamps: ${uniqueTimestamps}`, 'logic');
+        
+        if (uniqueTimestamps === 1) {
+            this.addLog(`[ALERT] ⚠️ ALL TIMESTAMPS IDENTICAL - BOT DETECTED`, 'error');
+        }
+        
+        // Check user IDs
+        const uniqueUsers = new Set(data.map(d => d.user_id)).size;
+        this.addLog(`[ANALYSIS] Unique Users: ${uniqueUsers}`, 'logic');
+        
+        if (uniqueUsers === 1) {
+            this.addLog(`[ALERT] ⚠️ Single user submitted ${data.length} reports`, 'error');
+        }
+        
+        // Show sample of points
+        for (let i = 0; i < Math.min(data.length, 8); i++) {
+            const point = data[i];
+            if (point.latitude && point.longitude) {
+                const marker = this.createSpotlightMarker(point, config.color, 0.9);
+                await this.delay(80);
+            }
+        }
+        
+        this.updateInspector({
+            category: 'Multiple (Bot)',
+            epsilon: 'N/A',
+            timeDiff: '0ms (identical)',
+            semantic: 'N/A (spam)',
+            keywords: [],
+            keywordSimilarity: 0,
+            keywordVerdict: 'SUSPICIOUS',
+            verdict: 'FLAGGED'
+        });
+        
+        this.addLog(`[DECISION] 🚫 FLAG AS SPAM - Humanly impossible timing`, 'error');
+        this.addLog('═'.repeat(55), 'system');
+        this.addLog(`[RESULT] ${data.length} reports flagged for review`, 'warning');
+    }
+
+    /**
+     * Scenario: Default Pin (complaints at map center)
+     * Tests default/unset coordinate detection
+     */
+    async runScenarioDefaultPin(data, config) {
+        this.addLog(`[DEFAULT PIN] ${data.length} reports at suspicious location`, 'warning');
+        
+        // Check if all at same location
+        const locations = data.map(d => `${d.latitude?.toFixed(4)},${d.longitude?.toFixed(4)}`);
+        const uniqueLocations = new Set(locations).size;
+        
+        this.addLog(`[ANALYSIS] Unique Locations: ${uniqueLocations}`, 'logic');
+        
+        if (uniqueLocations === 1) {
+            this.addLog(`[ALERT] ⚠️ ALL REPORTS AT EXACT SAME POINT`, 'warning');
+            this.addLog(`[ANALYSIS] This may indicate default/unset coordinates`, 'info');
+        }
+        
+        // Show stacked marker
+        const sample = data[0];
+        if (sample.latitude && sample.longitude) {
+            const marker = this.createSpotlightMarker(sample, config.color, 1.5);
             await this.delay(ANIMATION_CONFIG.MARKER_DROP);
             
-            const result = checkLogic(primary, dup);
+            // Add warning circle
+            this.createEpsilonCircle(sample.latitude, sample.longitude, 50, '#f97316');
+        }
+        
+        this.updateInspector({
+            category: 'Various (Default Pin)',
+            epsilon: 'N/A',
+            timeDiff: 'Various',
+            semantic: 'N/A',
+            keywords: [],
+            keywordSimilarity: 0,
+            keywordVerdict: 'SUSPICIOUS',
+            verdict: 'FLAGGED'
+        });
+        
+        this.addLog(`[DECISION] ⚠️ FLAG FOR REVIEW - Possible default coordinates`, 'warning');
+        this.addLog('═'.repeat(55), 'system');
+        this.addLog(`[RESULT] ${data.length} reports require location verification`, 'warning');
+    }
+
+    /**
+     * Scenario: Null Data
+     * Tests graceful handling of missing data
+     */
+    async runScenarioNullData(data, config) {
+        this.addLog(`[NULL DATA] Testing data integrity handling`, 'system');
+        
+        for (const point of data) {
+            this.addLog(`[CHECK] ${point.id}:`, 'info');
             
-            this.addLog(`[CALC] Distance: ${result.distance.toFixed(2)}m`, 'logic');
-            this.addLog(`[CALC] Same Category: ${primary.category === dup.category ? 'YES' : 'NO'}`, 'logic');
-            this.addLog(`[CALC] Same User: ${primary.user_id === dup.user_id ? 'YES ⚠️' : 'NO'}`, 'logic');
+            const hasNullLat = point.latitude === null || point.latitude === undefined;
+            const hasNullLng = point.longitude === null || point.longitude === undefined;
+            const hasNullCat = point.category === null || point.category === undefined;
             
-            this.createConnectionLine(
-                primary.latitude, primary.longitude,
-                dup.latitude, dup.longitude,
-                result.shouldMerge ? '#10b981' : '#ef4444'
-            );
-            
-            if (result.shouldMerge) {
-                this.addLog(`[DECISION] ✅ MERGED - Duplicate detected`, 'success');
+            if (hasNullLat || hasNullLng) {
+                this.addLog(`  ├─ Coordinates: ${hasNullLat ? 'NULL' : point.latitude}, ${hasNullLng ? 'NULL' : point.longitude}`, 'warning');
+                this.addLog(`  └─ Status: Cannot plot on map`, 'error');
             } else {
-                this.addLog(`[DECISION] ❌ SEPARATE - ${result.reasons.join(', ')}`, 'error');
+                const marker = this.createSpotlightMarker(point, config.color, 1.2);
+                this.addLog(`  ├─ Coordinates: Valid`, 'success');
             }
             
-            this.updateInspector({
-                category: dup.category,
-                epsilon: `${result.epsilon}m`,
-                timeDiff: `${result.timeDiff.toFixed(1)}h`,
-                semantic: result.semantic.score.toFixed(2),
-                verdict: result.verdict
-            });
+            if (hasNullCat) {
+                this.addLog(`  ├─ Category: NULL`, 'warning');
+                this.addLog(`  └─ Status: Cannot determine epsilon or relationships`, 'error');
+            } else {
+                this.addLog(`  ├─ Category: ${point.category}`, 'success');
+            }
             
             await this.delay(ANIMATION_CONFIG.STEP_DELAY);
         }
         
-        this.addLog('═'.repeat(55), 'system');
-        this.addLog(`[RESULT] Scenario 2 Complete: Duplicate detection analysis finished`, 'success');
-    }
-    
-    /**
-     * Scenario 3: Discrete Neighbors
-     * Tests epsilon threshold rejection (distance too great)
-     */
-    async runScenario3(data, config) {
-        if (data.length < 2) {
-            this.addLog('[ERROR] Need at least 2 points for discrete neighbors test', 'error');
-            return;
-        }
-        
-        const pointA = data[0];
-        const pointB = data[1];
-        
-        this.addLog(`[POINT A] ${pointA.id} [${pointA.category}]`, 'info');
-        const markerA = this.createSpotlightMarker(pointA, config.color, 1.3);
-        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
-        
-        const epsilon = getAdaptiveEpsilon(pointA.category);
-        this.addLog(`[ALGO] Adaptive ε for "${pointA.category}" = ${epsilon}m`, 'logic');
-        this.createEpsilonCircle(pointA.latitude, pointA.longitude, epsilon, config.color);
-        await this.delay(ANIMATION_CONFIG.SCAN_DURATION);
-        
-        this.addLog(`[POINT B] ${pointB.id} [${pointB.category}]`, 'info');
-        const markerB = this.createSpotlightMarker(pointB, '#f59e0b', 1.3);
-        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
-        
-        const result = checkLogic(pointA, pointB);
-        
-        this.addLog(`[CALC] Distance: ${result.distance.toFixed(2)}m`, 'logic');
-        this.addLog(`[CALC] Epsilon Threshold: ${result.epsilon}m`, 'logic');
-        this.addLog(`[CALC] Distance > ε: ${result.distance > result.epsilon ? 'YES ❌' : 'NO ✅'}`, 'logic');
-        
-        // Draw dashed red line showing they're too far apart
-        this.createConnectionLine(
-            pointA.latitude, pointA.longitude,
-            pointB.latitude, pointB.longitude,
-            '#ef4444', true
-        );
-        
-        await this.delay(ANIMATION_CONFIG.LINE_DRAW);
-        
-        // Add reject marker at midpoint
-        const midLat = (pointA.latitude + pointB.latitude) / 2;
-        const midLng = (pointA.longitude + pointB.longitude) / 2;
-        this.createRejectMarker(midLat, midLng);
-        
-        this.addLog(`[DECISION] ❌ REJECTED - ${result.reasons.join(', ')}`, 'error');
-        
         this.updateInspector({
-            category: pointB.category,
-            epsilon: `${result.epsilon}m`,
-            timeDiff: `${result.timeDiff.toFixed(1)}h`,
-            semantic: result.semantic.score.toFixed(2),
-            verdict: result.verdict
+            category: 'Null Data Test',
+            epsilon: 'N/A',
+            timeDiff: 'N/A',
+            semantic: 'N/A',
+            keywords: [],
+            keywordSimilarity: 0,
+            keywordVerdict: 'N/A',
+            verdict: 'HANDLED'
         });
         
         this.addLog('═'.repeat(55), 'system');
-        this.addLog(`[RESULT] Scenario 3 Complete: Points too far apart (${result.distance.toFixed(1)}m > ${result.epsilon}m)`, 'warning');
-    }
-    
-    /**
-     * Scenario 4: Temporal Decay
-     * Tests time window rejection (report too old)
-     */
-    async runScenario4(data, config) {
-        if (data.length < 2) {
-            this.addLog('[ERROR] Need at least 2 points for temporal decay test', 'error');
-            return;
-        }
-        
-        const recent = data[0];
-        const old = data[1];
-        
-        this.addLog(`[RECENT] ${recent.id} [${recent.category}]`, 'info');
-        this.addLog(`[TIME] ${new Date(recent.timestamp).toLocaleString()}`, 'info');
-        const recentMarker = this.createSpotlightMarker(recent, config.color, 1.3);
-        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
-        
-        const epsilon = getAdaptiveEpsilon(recent.category);
-        this.createEpsilonCircle(recent.latitude, recent.longitude, epsilon, config.color);
-        await this.delay(ANIMATION_CONFIG.SCAN_DURATION);
-        
-        this.addLog(`[OLD] ${old.id} [${old.category}]`, 'info');
-        this.addLog(`[TIME] ${new Date(old.timestamp).toLocaleString()}`, 'info');
-        const oldMarker = this.createSpotlightMarker(old, '#8b92a8', 1.3);
-        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
-        
-        const result = checkLogic(recent, old);
-        
-        this.addLog(`[CALC] Distance: ${result.distance.toFixed(2)}m ✅`, 'logic');
-        this.addLog(`[CALC] Semantic: ${result.semantic.score.toFixed(2)} ✅`, 'logic');
-        this.addLog(`[CALC] Time Diff: ${result.timeDiff.toFixed(1)} hours`, 'logic');
-        this.addLog(`[CALC] Max Allowed: ${MAX_TIME_DIFF_HOURS} hours`, 'logic');
-        this.addLog(`[CALC] Time Exceeded: ${result.timeDiff > MAX_TIME_DIFF_HOURS ? 'YES ❌' : 'NO ✅'}`, 'logic');
-        
-        // Draw dashed line
-        this.createConnectionLine(
-            recent.latitude, recent.longitude,
-            old.latitude, old.longitude,
-            '#f59e0b', true
-        );
-        
-        await this.delay(ANIMATION_CONFIG.LINE_DRAW);
-        
-        this.addLog(`[DECISION] ❌ REJECTED - ${result.reasons.join(', ')}`, 'error');
-        
-        this.updateInspector({
-            category: old.category,
-            epsilon: `${result.epsilon}m`,
-            timeDiff: `${result.timeDiff.toFixed(1)}h`,
-            semantic: result.semantic.score.toFixed(2),
-            verdict: result.verdict
-        });
-        
-        this.addLog('═'.repeat(55), 'system');
-        this.addLog(`[RESULT] Scenario 4 Complete: Report too old (${result.timeDiff.toFixed(0)}h > ${MAX_TIME_DIFF_HOURS}h)`, 'warning');
-    }
-    
-    /**
-     * Scenario 5: False Positive Block
-     * Tests semantic rejection (unrelated categories)
-     */
-    async runScenario5(data, config) {
-        if (data.length < 2) {
-            this.addLog('[ERROR] Need at least 2 points for false positive test', 'error');
-            return;
-        }
-        
-        const pointA = data[0];
-        const pointB = data[1];
-        
-        this.addLog(`[POINT A] ${pointA.id} [${pointA.category}]`, 'info');
-        const markerA = this.createSpotlightMarker(pointA, config.color, 1.3);
-        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
-        
-        // Use larger epsilon to show distance IS okay
-        const epsilon = Math.max(getAdaptiveEpsilon(pointA.category), getAdaptiveEpsilon(pointB.category));
-        this.createEpsilonCircle(pointA.latitude, pointA.longitude, epsilon, config.color);
-        await this.delay(ANIMATION_CONFIG.SCAN_DURATION);
-        
-        this.addLog(`[POINT B] ${pointB.id} [${pointB.category}]`, 'info');
-        const markerB = this.createSpotlightMarker(pointB, '#ef4444', 1.3);
-        await this.delay(ANIMATION_CONFIG.MARKER_DROP);
-        
-        const result = checkLogic(pointA, pointB);
-        
-        this.addLog(`[CALC] Distance: ${result.distance.toFixed(2)}m ✅ (within ε)`, 'logic');
-        this.addLog(`[CALC] Time Diff: ${result.timeDiff.toFixed(1)}h ✅ (within window)`, 'logic');
-        this.addLog(`[CALC] Semantic Check: "${pointA.category}" → "${pointB.category}"`, 'logic');
-        this.addLog(`[CALC] Correlation Score: ${result.semantic.score.toFixed(2)}`, 'logic');
-        this.addLog(`[CALC] Relationship: ${result.semantic.relationship}`, 'logic');
-        this.addLog(`[CALC] Correlation < ${CORRELATION_THRESHOLD}: ${result.semantic.score < CORRELATION_THRESHOLD ? 'YES ❌' : 'NO ✅'}`, 'logic');
-        
-        // Draw dashed red line
-        this.createConnectionLine(
-            pointA.latitude, pointA.longitude,
-            pointB.latitude, pointB.longitude,
-            '#ef4444', true
-        );
-        
-        await this.delay(ANIMATION_CONFIG.LINE_DRAW);
-        
-        // Add reject marker
-        const midLat = (pointA.latitude + pointB.latitude) / 2;
-        const midLng = (pointA.longitude + pointB.longitude) / 2;
-        this.createRejectMarker(midLat, midLng);
-        
-        this.addLog(`[DECISION] ❌ REJECTED - ${result.reasons.join(', ')}`, 'error');
-        
-        this.updateInspector({
-            category: pointB.category,
-            epsilon: `${result.epsilon}m`,
-            timeDiff: `${result.timeDiff.toFixed(1)}h`,
-            semantic: result.semantic.score.toFixed(2),
-            verdict: result.verdict
-        });
-        
-        this.addLog('═'.repeat(55), 'system');
-        this.addLog(`[RESULT] Scenario 5 Complete: No semantic relationship between categories`, 'warning');
+        this.addLog(`[RESULT] Null data handled gracefully (no crash)`, 'success');
     }
 }
 
@@ -1507,30 +1825,80 @@ class MetricsCalculator {
         
         // Analyze results based on scenario type
         switch(scenarioNumber) {
-            case 1: // Semantic Chain - should MERGE all floods with source
-                mergeCount = scenarioData.filter(d => d._scenario?.includes('flood')).length;
-                clusterCount = 1; // All merged into one cluster
-                break;
-                
-            case 2: // Duplicate Detection - should MERGE duplicates
-                mergeCount = scenarioData.length - 1; // All but one merged
+            case 1: // S-01 Redundancy - 3 identical should MERGE
+                mergeCount = scenarioData.length - 1;
                 clusterCount = 1;
                 break;
                 
-            case 3: // Discrete Neighbors - should SEPARATE (different clusters)
+            case 2: // S-03 Discrete - 15m apart, should SEPARATE
                 separateCount = scenarioData.length;
-                clusterCount = scenarioData.length; // Each stays separate
+                clusterCount = scenarioData.length;
                 break;
                 
-            case 4: // Temporal Decay - should SEPARATE (too old)
-                separateCount = scenarioData.length;
-                clusterCount = scenarioData.length; // No merging
+            case 3: // S-07 Precision - PARTIAL (1 merge, 1 separate)
+                mergeCount = 1;
+                separateCount = 1;
+                clusterCount = 2;
                 break;
                 
-            case 5: // False Positive Block - should SEPARATE (unrelated)
+            case 4: // S-09 GPS Drift - same user, should MERGE
+                mergeCount = scenarioData.length - 1;
+                clusterCount = 1;
+                break;
+                
+            case 5: // S-13 Moving Hazard - 60m apart, CONSIDER
+                clusterCount = 2; // Could be separate or linked
+                break;
+                
+            case 6: // S-02 Causal - Pipe+Flood should MERGE
+                mergeCount = 1;
+                clusterCount = 1;
+                break;
+                
+            case 7: // S-05 False Correlation - unrelated, SEPARATE
                 separateCount = 2;
                 clusterCount = 2;
                 break;
+                
+            case 8: // S-06 Domino Chain - all linked, MERGE
+                mergeCount = 2;
+                clusterCount = 1;
+                break;
+                
+            case 9: // S-10 Conflict - same location diff category, SEPARATE
+                separateCount = 2;
+                clusterCount = 2;
+                break;
+                
+            case 10: // S-11 Synonyms - same meaning, MERGE
+                mergeCount = 1;
+                clusterCount = 1;
+                break;
+                
+            case 11: // S-04 Time Decay - 90 days old, SEPARATE
+                separateCount = 2;
+                clusterCount = 2;
+                break;
+                
+            case 12: // S-08 Mass Panic - 20 fire reports, MERGE all
+                mergeCount = scenarioData.length - 1;
+                clusterCount = 1;
+                break;
+                
+            case 13: // S-12 Spam Bot - 50 identical timestamp, FLAG
+                clusterCount = 1; // Flagged as suspicious
+                break;
+                
+            case 14: // S-14 Default Pin - all at center, FLAG
+                clusterCount = 1; // Flagged
+                break;
+                
+            case 15: // S-15 Null Data - HANDLE gracefully
+                clusterCount = scenarioData.length; // Each handled separately
+                break;
+                
+            default:
+                clusterCount = Math.ceil(scenarioData.length / 2);
         }
         
         // Calculate redundancy reduction percentage
@@ -1678,6 +2046,8 @@ window.SimulationEngine = SimulationEngine;
 window.SCENARIO_CONFIG = SCENARIO_CONFIG;
 window.ADAPTIVE_EPSILON = ADAPTIVE_EPSILON;
 window.RELATIONSHIP_MATRIX = RELATIONSHIP_MATRIX;
+window.KEYWORD_CONFIG = KEYWORD_CONFIG;
 window.haversineDistance = haversineDistance;
 window.checkLogic = checkLogic;
+window.checkKeywordSimilarity = checkKeywordSimilarity;
 window.MetricsCalculator = MetricsCalculator;

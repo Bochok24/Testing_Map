@@ -70,46 +70,149 @@
             <!-- Test Scenarios Section -->
             <section class="scenarios-section">
                 <h2>Test Scenarios</h2>
-                <div class="scenarios-list">
-                    <button class="scenario-btn" data-scenario="1">
-                        <i class="fas fa-water"></i>
-                        <div class="scenario-info">
-                            <span class="scenario-label">Scenario 1</span>
-                            <span class="scenario-name">Pipe → Flood Chain</span>
-                        </div>
-                    </button>
+                
+                <!-- Group A: Spatial Logic -->
+                <div class="scenario-group">
+                    <h3 class="scenario-group-title">
+                        <i class="fas fa-map-marker-alt"></i> Group A: Spatial Logic
+                    </h3>
+                    <div class="scenarios-list">
+                        <button class="scenario-btn" data-scenario="1">
+                            <i class="fas fa-clone"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-01</span>
+                                <span class="scenario-name">Redundancy (0m)</span>
+                            </div>
+                        </button>
 
-                    <button class="scenario-btn" data-scenario="2">
-                        <i class="fas fa-copy"></i>
-                        <div class="scenario-info">
-                            <span class="scenario-label">Scenario 2</span>
-                            <span class="scenario-name">Duplicate Spammer</span>
-                        </div>
-                    </button>
+                        <button class="scenario-btn" data-scenario="2">
+                            <i class="fas fa-arrows-alt-h"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-03</span>
+                                <span class="scenario-name">Discrete (15m)</span>
+                            </div>
+                        </button>
 
-                    <button class="scenario-btn" data-scenario="3">
-                        <i class="fas fa-faucet-drip"></i>
-                        <div class="scenario-info">
-                            <span class="scenario-label">Scenario 3</span>
-                            <span class="scenario-name">Discrete Neighbors</span>
-                        </div>
-                    </button>
+                        <button class="scenario-btn" data-scenario="3">
+                            <i class="fas fa-crosshairs"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-07</span>
+                                <span class="scenario-name">Precision Edge</span>
+                            </div>
+                        </button>
 
-                    <button class="scenario-btn" data-scenario="4">
-                        <i class="fas fa-clock"></i>
-                        <div class="scenario-info">
-                            <span class="scenario-label">Scenario 4</span>
-                            <span class="scenario-name">Temporal Drift</span>
-                        </div>
-                    </button>
+                        <button class="scenario-btn" data-scenario="4">
+                            <i class="fas fa-satellite-dish"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-09</span>
+                                <span class="scenario-name">GPS Drift</span>
+                            </div>
+                        </button>
 
-                    <button class="scenario-btn" data-scenario="5">
-                        <i class="fas fa-ban"></i>
-                        <div class="scenario-info">
-                            <span class="scenario-label">Scenario 5</span>
-                            <span class="scenario-name">False Positive</span>
-                        </div>
-                    </button>
+                        <button class="scenario-btn" data-scenario="5">
+                            <i class="fas fa-running"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-13</span>
+                                <span class="scenario-name">Moving Hazard</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Group B: Semantic Logic -->
+                <div class="scenario-group">
+                    <h3 class="scenario-group-title">
+                        <i class="fas fa-brain"></i> Group B: Semantic Logic
+                    </h3>
+                    <div class="scenarios-list">
+                        <button class="scenario-btn" data-scenario="6">
+                            <i class="fas fa-water"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-02</span>
+                                <span class="scenario-name">Causal Chain</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="7">
+                            <i class="fas fa-ban"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-05</span>
+                                <span class="scenario-name">False Correlation</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="8">
+                            <i class="fas fa-project-diagram"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-06</span>
+                                <span class="scenario-name">Domino Chain</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="9">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-10</span>
+                                <span class="scenario-name">Conflict</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="10">
+                            <i class="fas fa-language"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-11</span>
+                                <span class="scenario-name">Synonyms</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Group C: Data Integrity -->
+                <div class="scenario-group">
+                    <h3 class="scenario-group-title">
+                        <i class="fas fa-database"></i> Group C: Data Integrity
+                    </h3>
+                    <div class="scenarios-list">
+                        <button class="scenario-btn" data-scenario="11">
+                            <i class="fas fa-clock"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-04</span>
+                                <span class="scenario-name">Time Decay (90d)</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="12">
+                            <i class="fas fa-fire"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-08</span>
+                                <span class="scenario-name">Mass Panic</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="13">
+                            <i class="fas fa-robot"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-12</span>
+                                <span class="scenario-name">Spam Bot</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="14">
+                            <i class="fas fa-map-pin"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-14</span>
+                                <span class="scenario-name">Default Pin</span>
+                            </div>
+                        </button>
+
+                        <button class="scenario-btn" data-scenario="15">
+                            <i class="fas fa-question-circle"></i>
+                            <div class="scenario-info">
+                                <span class="scenario-label">S-15</span>
+                                <span class="scenario-name">Null Data</span>
+                            </div>
+                        </button>
+                    </div>
                 </div>
 
                 <button class="reset-btn">
@@ -159,6 +262,14 @@
                     <div class="inspector-field">
                         <label>Semantic Match:</label>
                         <span class="value" id="semanticMatch">-</span>
+                    </div>
+                    <div class="inspector-field keyword-field">
+                        <label><i class="fas fa-tags"></i> Keywords:</label>
+                        <span class="value keyword-tags" id="keywordTags">-</span>
+                    </div>
+                    <div class="inspector-field keyword-field">
+                        <label>Keyword Similarity:</label>
+                        <span class="value" id="keywordSimilarity">-</span>
                     </div>
                     <div class="inspector-field verdict">
                         <label>Logic Verdict:</label>
